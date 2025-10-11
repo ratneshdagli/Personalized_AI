@@ -1,0 +1,29 @@
+# Flutter
+flutter_application_1/.dart_tool/
+flutter_application_1/.idea/
+flutter_application_1/build/
+flutter_application_1/.packages
+flutter_application_1/pubspec.lock
+
+# iOS / Android
+flutter_application_1/ios/Flutter/Flutter.framework
+flutter_application_1/ios/Flutter/Flutter.podspec
+flutter_application_1/ios/Pods/
+flutter_application_1/android/.gradle/
+flutter_application_1/android/app/build/
+
+# Python / FastAPI backend
+flutter_backend/venv/
+flutter_backend/__pycache__/
+flutter_backend/*.pyc
+flutter_backend/.vscode/
+flutter_backend/instance/
+flutter_backend/__pypackages__/
+flutter_backend/*.sqlite
+flutter_backend/*.log
+
+# VSCode / IDE
+.vscode/
+*.swp
+*.swo
+.DS_Store
