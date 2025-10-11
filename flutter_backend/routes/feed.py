@@ -1,45 +1,26 @@
-from datetime import datetime
-from models import FeedItem
 from fastapi import APIRouter
 from typing import List
 from models import FeedItem
 from utils.mock_data import mock_feed
-router = APIRouter()  # <-- Make sure this line exists
+from ml.ranker import rank_feed_items
+from ml.summarizer import summarize_text # <-- Import the summarizer
+
+router = APIRouter()
 
 @router.get("/feed", response_model=List[FeedItem])
 async def get_feed():
-    return mock_feed
-mock_feed = [
-    FeedItem(
-        id="1",
-        title="Assignment due tomorrow",
-        summary="Submit Google form for AI course by tomorrow 6 PM.",
-        date=datetime.now(),
-        source="Gmail",
-        priority=1
-    ),
-    FeedItem(
-        id="2",
-        title="Reddit post: New placements",
-        summary="Top 10 companies are hiring this month in your field.",
-        date=datetime.now(),
-        source="Reddit",
-        priority=2
-    ),
-    FeedItem(
-        id="3",
-        title="Friend landed abroad!",
-        summary="Your friend posted on Instagram: moved to Germany for internship.",
-        date=datetime.now(),
-        source="Instagram",
-        priority=1
-    ),
-    FeedItem(
-        id="4",
-        title="Tech News",
-        summary="Stock XYZ fell 20%, might impact AI sector investments.",
-        date=datetime.now(),
-        source="News",
-        priority=3
-    ),
-]
+    """
+    This endpoint returns a mock list of personalized feed items,
+    ranked and summarized by the NLP services.
+    """
+    # First, rank the items
+    ranked_feed = rank_feed_items(mock_feed)
+
+    # Now, summarize each item's content
+    for item in ranked_feed:
+        # Keep the original summary in the full_text field
+        item.full_text = item.summary
+        # Create a new, shorter summary
+        item.summary = summarize_text(item.full_text)
+        
+    return ranked_feed

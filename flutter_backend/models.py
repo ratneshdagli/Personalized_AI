@@ -5,6 +5,7 @@ class FeedItem(BaseModel):
     id: str
     title: str
     summary: str
+    full_text: str  # New field for the original content
     date: datetime
-    source: str   # Gmail, Reddit, News, WhatsApp
-    priority: int # 1 = high, 2 = medium, 3 = low
+    source: str
+    priority: int
