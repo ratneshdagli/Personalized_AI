@@ -224,3 +224,27 @@ def get_vector_store() -> VectorStore:
     return vector_store
 
 
+# Public API expected by other modules
+def add_embedding(item_id: str, embedding: list[float]) -> bool:
+    """
+    Add an embedding to the global vector store.
+    Accepts item_id as str for compatibility and stores it as int when possible.
+    """
+    try:
+        feed_item_id = int(item_id)
+    except (TypeError, ValueError):
+        # Fallback: if cannot cast, store a sentinel mapping with None user
+        # The underlying store expects int IDs; abort if not numeric
+        logger.error(f"add_embedding: item_id must be numeric, got: {item_id}")
+        return False
+
+    ok = vector_store.add_embedding(feed_item_id, embedding, user_id=None)
+    if ok:
+        # Persist index opportunistically
+        try:
+            vector_store.save_index()
+        except Exception as e:
+            logger.warning(f"Failed to save vector index after add: {e}")
+    return ok
+
+

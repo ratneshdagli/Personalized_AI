@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 
@@ -140,12 +142,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('Control Center'),
+        backgroundColor: Colors.transparent,
         actions: [
           IconButton(
             onPressed: _saveSettings,
-            icon: const Icon(Icons.save),
+            icon: const Icon(PhosphorIconsBold.floppyDisk),
+            tooltip: 'Save',
           ),
         ],
       ),
@@ -155,18 +158,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 // Notifications Section
-                _buildSectionHeader('Notifications'),
+                _buildSectionHeader('Notifications').animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
                 _buildSwitchTile(
                   'Enable Notifications',
                   'Receive notifications for important tasks and updates',
-                  Icons.notifications,
+                  PhosphorIconsLight.bell,
                   _notificationsEnabled,
                   (value) => setState(() => _notificationsEnabled = value),
                 ),
                 _buildSwitchTile(
                   'Auto Sync',
                   'Automatically sync data in the background',
-                  Icons.sync,
+                  PhosphorIconsLight.arrowsClockwise,
                   _autoSyncEnabled,
                   (value) => setState(() => _autoSyncEnabled = value),
                 ),
@@ -174,18 +177,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
                 
                 // Privacy Section
-                _buildSectionHeader('Privacy & Security'),
+                _buildSectionHeader('Privacy & Security').animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
                 _buildSwitchTile(
                   'Local Only Mode',
                   'Process data only on your device (no cloud sync)',
-                  Icons.security,
+                  PhosphorIconsLight.shieldCheck,
                   _localOnlyMode,
                   (value) => setState(() => _localOnlyMode = value),
                 ),
                 _buildSwitchTile(
                   'Dark Mode',
                   'Use dark theme for better battery life',
-                  Icons.dark_mode,
+                  PhosphorIconsLight.moon,
                   _darkModeEnabled,
                   (value) => setState(() => _darkModeEnabled = value),
                 ),
@@ -193,9 +196,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
                 
                 // Sync Settings
-                _buildSectionHeader('Sync Settings'),
+                _buildSectionHeader('Sync Settings').animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
                 ListTile(
-                  leading: const Icon(Icons.schedule),
+                  leading: const Icon(PhosphorIconsLight.timer),
                   title: const Text('Sync Interval'),
                   subtitle: Text('Every $_syncIntervalMinutes minutes'),
                   trailing: DropdownButton<int>(
@@ -218,31 +221,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
                 
                 // Data Management Section
-                _buildSectionHeader('Data Management'),
+                _buildSectionHeader('Data Management').animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
                 ListTile(
-                  leading: const Icon(Icons.download),
+                  leading: const Icon(PhosphorIconsLight.downloadSimple),
                   title: const Text('Export Data'),
                   subtitle: const Text('Download your data as JSON'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
+                  trailing: const Icon(PhosphorIconsLight.caretRight),
                   onTap: _exportData,
                 ),
                 ListTile(
-                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  leading: const Icon(PhosphorIconsLight.trashSimple, color: Colors.red),
                   title: const Text('Clear All Data'),
                   subtitle: const Text('Delete all data and reset settings'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
+                  trailing: const Icon(PhosphorIconsLight.caretRight),
                   onTap: _clearAllData,
                 ),
                 
                 const SizedBox(height: 24),
                 
                 // Connectors Section
-                _buildSectionHeader('Data Sources'),
+                _buildSectionHeader('Data Sources').animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
                 ListTile(
-                  leading: const Icon(Icons.settings),
+                  leading: const Icon(PhosphorIconsLight.plug),
                   title: const Text('Manage Connectors'),
                   subtitle: const Text('Configure Gmail, WhatsApp, News, Reddit'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
+                  trailing: const Icon(PhosphorIconsLight.caretRight),
                   onTap: () {
                     Navigator.pushNamed(context, '/login');
                   },
@@ -251,27 +254,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 24),
                 
                 // About Section
-                _buildSectionHeader('About'),
+                _buildSectionHeader('About').animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
                 ListTile(
-                  leading: const Icon(Icons.info),
+                  leading: const Icon(PhosphorIconsLight.info),
                   title: const Text('App Version'),
                   subtitle: const Text('1.0.0'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.privacy_tip),
+                  leading: const Icon(PhosphorIconsLight.shield),
                   title: const Text('Privacy Policy'),
                   subtitle: const Text('View our privacy policy'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
+                  trailing: const Icon(PhosphorIconsLight.caretRight),
                   onTap: () {
                     // TODO: Open privacy policy
                     _showSuccessSnackBar('Privacy policy will open in browser');
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.help),
+                  leading: const Icon(PhosphorIconsLight.question),
                   title: const Text('Help & Support'),
                   subtitle: const Text('Get help and contact support'),
-                  trailing: const Icon(Icons.arrow_forward_ios),
+                  trailing: const Icon(PhosphorIconsLight.caretRight),
                   onTap: () {
                     // TODO: Open help/support
                     _showSuccessSnackBar('Help section will open');
@@ -285,7 +288,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: _saveSettings,
-                    icon: const Icon(Icons.save),
+                    icon: const Icon(PhosphorIconsBold.floppyDisk),
                     label: const Text('Save Settings'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),

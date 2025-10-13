@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -163,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Connector Setup'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Colors.transparent,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -194,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ),
-            ),
+            ).animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
             
             const SizedBox(height: 24),
             
@@ -202,7 +204,7 @@ class _LoginScreenState extends State<LoginScreen> {
             Text(
               'Data Sources',
               style: Theme.of(context).textTheme.headlineSmall,
-            ),
+            ).animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0),
             const SizedBox(height: 16),
             
             Expanded(
@@ -211,26 +213,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   _buildConnectorCard(
                     'Gmail',
                     'Connect your Gmail account to process emails',
-                    Icons.email,
+                    PhosphorIconsBold.envelopeSimple,
                     'gmail',
                     onAuthTap: _handleGmailAuth,
                   ),
                   _buildConnectorCard(
                     'WhatsApp',
                     'Process WhatsApp chat exports and notifications',
-                    Icons.chat,
+                    PhosphorIconsBold.whatsappLogo,
                     'whatsapp',
                   ),
                   _buildConnectorCard(
                     'News',
                     'Get personalized news from RSS feeds and APIs',
-                    Icons.newspaper,
+                    PhosphorIconsBold.newspaper,
                     'news',
                   ),
                   _buildConnectorCard(
                     'Reddit',
                     'Monitor Reddit posts from your subscribed subreddits',
-                    Icons.reddit,
+                    PhosphorIconsBold.redditLogo,
                     'reddit',
                   ),
                 ],
@@ -243,7 +245,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 padding: const EdgeInsets.only(top: 16),
                 child: OutlinedButton.icon(
                   onPressed: _isLoading ? null : _clearAllConnections,
-                  icon: const Icon(Icons.clear_all),
+                  icon: const Icon(PhosphorIconsBold.broom),
                   label: const Text('Clear All Connections'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.red,
@@ -312,7 +314,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _isLoading ? null : onAuthTap,
-                  icon: const Icon(Icons.login),
+                  icon: const Icon(PhosphorIconsBold.arrowSquareOut),
                   label: const Text('Authenticate with Gmail'),
                 ),
               ),
@@ -323,7 +325,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Row(
                 children: [
                   Icon(
-                    Icons.check_circle,
+                    PhosphorIconsFill.checkCircle,
                     size: 16,
                     color: Colors.green,
                   ),
@@ -341,7 +343,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       ),
-    );
+    ).animate().fadeIn(duration: 300.ms).moveY(begin: 8, end: 0);
   }
 
   Future<void> _clearAllConnections() async {

@@ -1,5 +1,8 @@
 // Enhanced task card with animations and better visual design
 import 'package:flutter/material.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:glassmorphism/glassmorphism.dart';
 import '../models/task.dart';
 
 class TaskCard extends StatefulWidget {
@@ -146,31 +149,37 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
       builder: (context, child) {
         return Transform.scale(
           scale: _scaleAnimation.value,
-          child: Card(
-            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-            elevation: _elevationAnimation.value,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            child: GlassmorphicContainer(
+            width: double.infinity,
+            height: 0,
+            borderRadius: 18,
+            blur: 16,
+            alignment: Alignment.center,
+            border: 1,
+            linearGradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.10),
+                Colors.white.withOpacity(0.06),
+              ],
+              stops: const [0.1, 1],
+            ),
+            borderGradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.3),
+                Colors.white.withOpacity(0.1),
+              ],
             ),
             child: InkWell(
               onTapDown: _onTapDown,
               onTapUp: _onTapUp,
               onTapCancel: _onTapCancel,
               onTap: widget.onTap,
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      priorityColor.withOpacity(0.05),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-                child: Stack(
+              borderRadius: BorderRadius.circular(18),
+              child: Stack(
                   children: [
                     // Priority indicator
                     Positioned(
@@ -182,8 +191,8 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                         decoration: BoxDecoration(
                           color: priorityColor,
                           borderRadius: const BorderRadius.only(
-                            topLeft: Radius.circular(16),
-                            bottomLeft: Radius.circular(16),
+                            topLeft: Radius.circular(18),
+                            bottomLeft: Radius.circular(18),
                           ),
                         ),
                       ),
@@ -213,7 +222,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                               ),
                               child: isCompleted
                                   ? const Icon(
-                                      Icons.check,
+                                      PhosphorIconsBold.check,
                                       color: Colors.white,
                                       size: 16,
                                     )
@@ -250,7 +259,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                                       fontSize: 14,
                                       color: isCompleted 
                                           ? Colors.grey.shade400 
-                                          : Colors.grey.shade600,
+                                          : Colors.white.withOpacity(0.8),
                                       height: 1.4,
                                     ),
                                     maxLines: 2,
@@ -268,7 +277,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                                           vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: priorityColor.withOpacity(0.1),
+                                          color: priorityColor.withOpacity(0.15),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: Row(
@@ -300,13 +309,13 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                                           vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
+                                          color: Colors.white.withOpacity(0.08),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: Text(
                                           _formatDueDate(widget.task.dueDate!),
                                           style: TextStyle(
-                                            color: Colors.grey.shade600,
+                                            color: Colors.white.withOpacity(0.85),
                                             fontSize: 12,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -327,7 +336,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                                 IconButton(
                                   onPressed: widget.onSyncToCalendar,
                                   icon: Icon(
-                                    Icons.event,
+                                    PhosphorIconsBold.calendar,
                                     color: Colors.blue.shade600,
                                     size: 20,
                                   ),
@@ -338,7 +347,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                                 IconButton(
                                   onPressed: widget.onDelete,
                                   icon: Icon(
-                                    Icons.delete_outline,
+                                    PhosphorIconsBold.trash,
                                     color: Colors.red.shade400,
                                     size: 20,
                                   ),
@@ -353,7 +362,7 @@ class _TaskCardState extends State<TaskCard> with SingleTickerProviderStateMixin
                 ),
               ),
             ),
-          ),
+          ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.08, end: 0, curve: Curves.easeOut),
         );
       },
     );

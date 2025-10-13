@@ -11,13 +11,16 @@ class ApiService {
   Future<bool> checkHealth() async {
     try {
       print('Checking backend health...');
-      final response = await http.get(
-        Uri.parse('${baseUrl.replaceAll('/api', '')}/'),
-        headers: ApiConfig.defaultHeaders,
-      ).timeout(const Duration(seconds: 10));
+      // Use root of backend (without /api) to hit a simple health/root endpoint
+      final response = await http
+          .get(
+            Uri.parse('${baseUrl.replaceAll('/api', '')}/'),
+            headers: ApiConfig.defaultHeaders,
+          )
+          .timeout(ApiConfig.timeout);
 
       if (response.statusCode == 200) {
-        print('Backend is healthy!');
+        print('Backend is healthy! Body: ${response.body}');
         return true;
       } else {
         print('Backend health check failed: ${response.statusCode}');
@@ -35,10 +38,12 @@ class ApiService {
       ApiConfig.printConfig();
       print('Fetching feed from: $baseUrl/feed');
       
-      final response = await http.get(
-        Uri.parse('$baseUrl/feed'),
-        headers: ApiConfig.defaultHeaders,
-      ).timeout(ApiConfig.timeout);
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/feed'),
+            headers: ApiConfig.defaultHeaders,
+          )
+          .timeout(ApiConfig.timeout);
 
       print('Response status: ${response.statusCode}');
       print('Response body length: ${response.body.length}');
@@ -76,7 +81,9 @@ class ApiService {
     if (sortOrder != null) queryParams['sortOrder'] = sortOrder;
     
     final uri = Uri.parse('$baseUrl/feed').replace(queryParameters: queryParams);
-    final response = await http.get(uri);
+    final response = await http
+        .get(uri, headers: ApiConfig.defaultHeaders)
+        .timeout(ApiConfig.timeout);
 
     if (response.statusCode == 200) {
       List<dynamic> data = json.decode(response.body);
@@ -87,15 +94,13 @@ class ApiService {
   }
 
   Future<TaskExtractionResult> extractTasks(String text) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/extract_tasks'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: json.encode({
-        'text': text,
-      }),
-    );
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/extract_tasks'),
+          headers: ApiConfig.defaultHeaders,
+          body: json.encode({'text': text}),
+        )
+        .timeout(ApiConfig.timeout);
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
@@ -103,5 +108,16 @@ class ApiService {
     } else {
       throw Exception('Failed to extract tasks: ${response.statusCode}');
     }
+  }
+
+  Future<bool> postContextEvent(Map<String, dynamic> event) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/ingest/context_event'),
+          headers: ApiConfig.defaultHeaders,
+          body: json.encode(event),
+        )
+        .timeout(ApiConfig.timeout);
+    return response.statusCode == 200 || response.statusCode == 202;
   }
 }

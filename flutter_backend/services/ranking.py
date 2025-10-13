@@ -8,6 +8,7 @@ import json
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from storage.db import get_db_session
 
 from storage.models import FeedItem, User, UserProfile, Feedback, SourceType, PriorityLevel
 from nlp.embeddings import get_embeddings_pipeline
@@ -356,5 +357,23 @@ ranking_service = RankingService()
 def get_ranking_service() -> RankingService:
     """Get the global ranking service instance"""
     return ranking_service
+
+
+def rerank_feed(user_id: int, limit: int = 50) -> bool:
+    """
+    Thin wrapper used by services that want to trigger a re-ranking side effect.
+    It computes a ranking for the user's current feed items. The caller can choose
+    how to use the result; here we simply execute it to warm caches/side effects.
+    """
+    db = get_db_session()
+    try:
+        items = db.query(FeedItem).filter(FeedItem.user_id == user_id).all()
+        ranking_service.rank_feed_items(items, user_id, db, limit=limit)
+        return True
+    except Exception as e:
+        logger.error(f"rerank_feed failed for user {user_id}: {e}")
+        return False
+    finally:
+        db.close()
 
 

@@ -6,7 +6,10 @@ from routes.feedback import router as feedback_router
 from routes.gmail import router as gmail_router
 from routes.news import router as news_router
 from routes.reddit import router as reddit_router
-from routes.whatsapp import router as whatsapp_router
+try:
+    from routes.whatsapp import router as whatsapp_router
+except Exception:
+    whatsapp_router = None
 from routes.jobs import router as jobs_router
 from routes.instagram import router as instagram_router
 from routes.telegram import router as telegram_router
@@ -43,7 +46,12 @@ app.include_router(feedback_router, prefix="/api")
 app.include_router(gmail_router, prefix="/api")
 app.include_router(news_router, prefix="/api")
 app.include_router(reddit_router, prefix="/api")
-app.include_router(whatsapp_router, prefix="/api")
+if whatsapp_router is not None:
+    app.include_router(whatsapp_router, prefix="/api")
+else:
+    print("⚠️ WhatsApp routes are deprecated and disabled in favor of Notification+Accessibility pipeline.")
+from routes.context_ingest import router as context_router
+app.include_router(context_router)
 app.include_router(jobs_router, prefix="/api")
 app.include_router(instagram_router, prefix="/api")
 app.include_router(telegram_router, prefix="/api")

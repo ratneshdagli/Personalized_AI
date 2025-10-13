@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:phosphor_flutter/phosphor_flutter.dart';
 import '../models/feed_item.dart';
 import '../services/api_service.dart';
 import '../widgets/feed_card.dart';
@@ -56,12 +58,14 @@ class _FeedScreenState extends State<FeedScreen> {
         sortOrder: _sortOrder,
       );
       
+      if (!mounted) return;
       setState(() {
         _feedItems = feedItems;
         _applyFilters();
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -159,11 +163,12 @@ class _FeedScreenState extends State<FeedScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Feed'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        backgroundColor: Colors.transparent,
         actions: [
           IconButton(
             onPressed: _loadFeedItems,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(PhosphorIconsBold.arrowClockwise),
+            tooltip: 'Refresh',
           ),
           PopupMenuButton<String>(
             onSelected: (value) {
@@ -227,14 +232,14 @@ class _FeedScreenState extends State<FeedScreen> {
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: 'Search feed items...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(PhosphorIconsLight.magnifyingGlass),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                         onPressed: () {
                           _searchController.clear();
                           _applyFilters();
                         },
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(PhosphorIconsLight.xCircle),
                       )
                     : null,
                 border: const OutlineInputBorder(),
@@ -464,7 +469,7 @@ class _FeedScreenState extends State<FeedScreen> {
               },
               showPriority: true,
               showRelevance: true,
-            ),
+            ).animate().fadeIn(delay: (index * 60).ms, duration: 350.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOut),
           );
         },
       ),
