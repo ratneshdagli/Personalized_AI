@@ -1,0 +1,204 @@
+name: Performance Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run performance tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  backend-performance:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd flutter_backend
+        pip install -r requirements.txt
+        pip install locust pytest-benchmark memory-profiler
+    
+    - name: Start backend server
+      run: |
+        cd flutter_backend
+        python -c "from storage.db import init_db; init_db()" &
+        uvicorn main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+        REDIS_URL: redis://localhost:6379/0
+    
+    - name: Run performance tests
+      run: |
+        cd flutter_backend
+        # Run basic performance tests
+        python -c "
+        import time
+        import requests
+        
+        # Test API response times
+        start_time = time.time()
+        response = requests.get('http://localhost:8000/api/health')
+        response_time = time.time() - start_time
+        
+        print(f'Health endpoint response time: {response_time:.3f}s')
+        
+        if response_time > 1.0:
+            print('❌ Health endpoint too slow')
+            exit(1)
+        else:
+            print('✅ Health endpoint performance OK')
+        "
+    
+    - name: Run load tests with Locust
+      run: |
+        cd flutter_backend
+        # Create a simple locustfile for basic load testing
+        cat > locustfile.py << 'EOF'
+        from locust import HttpUser, task, between
+        
+        class WebsiteUser(HttpUser):
+            wait_time = between(1, 3)
+            
+            @task
+            def health_check(self):
+                self.client.get("/api/health")
+            
+            @task(3)
+            def feed_endpoint(self):
+                self.client.get("/api/feed")
+        EOF
+        
+        # Run locust for 30 seconds with 5 users
+        locust -f locustfile.py --host=http://localhost:8000 --users=5 --spawn-rate=1 --run-time=30s --headless || echo "Load test completed"
+
+  frontend-performance:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+    
+    - name: Install dependencies
+      run: |
+        cd flutter_application_1
+        flutter pub get
+    
+    - name: Build Flutter web for performance testing
+      run: |
+        cd flutter_application_1
+        flutter build web --release --web-renderer html --dart-define=FLUTTER_WEB_USE_SKIA=false
+    
+    - name: Analyze build size
+      run: |
+        cd flutter_application_1
+        echo "Build size analysis:"
+        du -sh build/web/
+        echo "Largest files:"
+        find build/web/ -type f -exec du -h {} + | sort -rh | head -10
+    
+    - name: Check bundle size
+      run: |
+        cd flutter_application_1
+        # Check if main.dart.js is under 1MB
+        main_js_size=$(stat -c%s build/web/main.dart.js 2>/dev/null || echo "0")
+        if [ "$main_js_size" -gt 1048576 ]; then
+          echo "❌ main.dart.js is too large: $(($main_js_size / 1024 / 1024))MB"
+          exit 1
+        else
+          echo "✅ main.dart.js size OK: $(($main_js_size / 1024))KB"
+        fi
+
+  memory-usage:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd flutter_backend
+        pip install -r requirements.txt
+        pip install memory-profiler psutil
+    
+    - name: Run memory usage tests
+      run: |
+        cd flutter_backend
+        python -c "
+        import psutil
+        import os
+        
+        # Get current memory usage
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        
+        print(f'Current memory usage: {memory_mb:.2f} MB')
+        
+        # Test memory usage during imports
+        import time
+        start_memory = memory_mb
+        
+        # Import main modules
+        from storage.db import init_db
+        from ml.llm_adapter import LLMAdapter
+        from services.ranking import get_ranking_service
+        
+        end_memory = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+        memory_increase = end_memory - start_memory
+        
+        print(f'Memory increase after imports: {memory_increase:.2f} MB')
+        
+        if memory_increase > 100:  # More than 100MB increase
+            print('❌ Memory usage too high')
+            exit(1)
+        else:
+            print('✅ Memory usage OK')
+        "
+

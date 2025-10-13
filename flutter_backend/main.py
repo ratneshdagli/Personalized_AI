@@ -1,10 +1,53 @@
 from fastapi import FastAPI
 from routes.feed import router as feed_router
+from routes.tasks import router as tasks_router
+from routes.search import router as search_router
+from routes.feedback import router as feedback_router
+from routes.gmail import router as gmail_router
+from routes.news import router as news_router
+from routes.reddit import router as reddit_router
+from routes.whatsapp import router as whatsapp_router
+from routes.jobs import router as jobs_router
+from routes.instagram import router as instagram_router
+from routes.telegram import router as telegram_router
+from routes.calendar import router as calendar_router
+from storage.db import init_db
+from dotenv import load_dotenv
+import os
+
+# ✅ Load environment variables from .env
+load_dotenv()
 
 app = FastAPI(title="Personal AI Feed Backend")
 
-# Include the feed router
+# ✅ Verify env variables loaded correctly
+if not os.getenv("GROQ_API_KEY"):
+    print("⚠️ Warning: GROQ_API_KEY not found in environment. LLM features may not work.")
+else:
+    print("✅ GROQ_API_KEY loaded successfully!")
+
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    
+    # Start background worker
+    from services.background_jobs import start_background_worker
+    await start_background_worker()
+
+# Include the routers
 app.include_router(feed_router, prefix="/api")
+app.include_router(tasks_router, prefix="/api")
+app.include_router(search_router, prefix="/api")
+app.include_router(feedback_router, prefix="/api")
+app.include_router(gmail_router, prefix="/api")
+app.include_router(news_router, prefix="/api")
+app.include_router(reddit_router, prefix="/api")
+app.include_router(whatsapp_router, prefix="/api")
+app.include_router(jobs_router, prefix="/api")
+app.include_router(instagram_router, prefix="/api")
+app.include_router(telegram_router, prefix="/api")
+app.include_router(calendar_router, prefix="/api")
 
 # Root endpoint
 @app.get("/")

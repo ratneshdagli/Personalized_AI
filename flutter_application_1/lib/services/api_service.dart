@@ -1,18 +1,107 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/feed_item.dart';
+import '../models/task.dart';
+import '../config/api_config.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.29.143:8000/api'; // Android emulator
+  static String get baseUrl => ApiConfig.baseUrl;
+
+  // Health check method
+  Future<bool> checkHealth() async {
+    try {
+      print('Checking backend health...');
+      final response = await http.get(
+        Uri.parse('${baseUrl.replaceAll('/api', '')}/'),
+        headers: ApiConfig.defaultHeaders,
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        print('Backend is healthy!');
+        return true;
+      } else {
+        print('Backend health check failed: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Backend health check error: $e');
+      return false;
+    }
+  }
 
   Future<List<FeedItem>> fetchFeed() async {
-    final response = await http.get(Uri.parse('$baseUrl/feed'));
+    try {
+      // Print debug info
+      ApiConfig.printConfig();
+      print('Fetching feed from: $baseUrl/feed');
+      
+      final response = await http.get(
+        Uri.parse('$baseUrl/feed'),
+        headers: ApiConfig.defaultHeaders,
+      ).timeout(ApiConfig.timeout);
+
+      print('Response status: ${response.statusCode}');
+      print('Response body length: ${response.body.length}');
+
+      if (response.statusCode == 200) {
+        List<dynamic> data = json.decode(response.body);
+        print('Successfully fetched ${data.length} feed items');
+        return data.map((item) => FeedItem.fromJson(item)).toList();
+      } else {
+        print('API Error: ${response.statusCode} - ${response.body}');
+        throw Exception('Failed to load feed: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Network Error: $e');
+      throw Exception('Network error: $e');
+    }
+  }
+
+  Future<List<FeedItem>> getFeedItems({
+    int limit = 20,
+    int offset = 0,
+    String? category,
+    String? source,
+    String? sortBy,
+    String? sortOrder,
+  }) async {
+    final queryParams = <String, String>{
+      'limit': limit.toString(),
+      'offset': offset.toString(),
+    };
+    
+    if (category != null) queryParams['category'] = category;
+    if (source != null) queryParams['source'] = source;
+    if (sortBy != null) queryParams['sortBy'] = sortBy;
+    if (sortOrder != null) queryParams['sortOrder'] = sortOrder;
+    
+    final uri = Uri.parse('$baseUrl/feed').replace(queryParameters: queryParams);
+    final response = await http.get(uri);
 
     if (response.statusCode == 200) {
       List<dynamic> data = json.decode(response.body);
       return data.map((item) => FeedItem.fromJson(item)).toList();
     } else {
-      throw Exception('Failed to load feed');
+      throw Exception('Failed to load feed items');
+    }
+  }
+
+  Future<TaskExtractionResult> extractTasks(String text) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/extract_tasks'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode({
+        'text': text,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return TaskExtractionResult.fromJson(data);
+    } else {
+      throw Exception('Failed to extract tasks: ${response.statusCode}');
     }
   }
 }
