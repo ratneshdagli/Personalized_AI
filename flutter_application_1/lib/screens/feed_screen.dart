@@ -30,7 +30,7 @@ class _FeedScreenState extends State<FeedScreen> {
   String _sortOrder = 'desc';
   
   // Available filters
-  final List<String> _availableSources = ['gmail', 'whatsapp', 'news', 'reddit'];
+  final List<String> _availableSources = ['gmail', 'whatsapp', 'whatsapp_notification', 'news', 'reddit'];
   final List<String> _availablePriorities = ['high', 'medium', 'low'];
 
   @override
@@ -251,49 +251,45 @@ class _FeedScreenState extends State<FeedScreen> {
           Container(
             height: 50,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [
-                      // Source filters
-                      ..._availableSources.map((source) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: FilterChip(
-                          label: Text(source.toUpperCase()),
-                          selected: _selectedSources.contains(source),
-                          onSelected: (_) => _toggleSourceFilter(source),
-                          selectedColor: Colors.blue[100],
-                        ),
-                      )),
-                      
-                      // Priority filters
-                      ..._availablePriorities.map((priority) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: FilterChip(
-                          label: Text(priority.toUpperCase()),
-                          selected: _selectedPriorities.contains(priority),
-                          onSelected: (_) => _togglePriorityFilter(priority),
-                          selectedColor: _getPriorityColor(priority),
-                        ),
-                      )),
-                      
-                      // Clear filters
-                      if (_selectedSources.isNotEmpty || _selectedPriorities.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: const Text('CLEAR ALL'),
-                            onSelected: (_) => _clearAllFilters(),
-                            selectedColor: Colors.red[100],
-                            selected: false,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Source filters
+                  ..._availableSources.map((source) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(source.toUpperCase()),
+                      selected: _selectedSources.contains(source),
+                      onSelected: (_) => _toggleSourceFilter(source),
+                      selectedColor: Colors.blue[100],
+                    ),
+                  )),
+                  
+                  // Priority filters
+                  ..._availablePriorities.map((priority) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(priority.toUpperCase()),
+                      selected: _selectedPriorities.contains(priority),
+                      onSelected: (_) => _togglePriorityFilter(priority),
+                      selectedColor: _getPriorityColor(priority),
+                    ),
+                  )),
+                  
+                  // Clear filters
+                  if (_selectedSources.isNotEmpty || _selectedPriorities.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: const Text('CLEAR ALL'),
+                        onSelected: (_) => _clearAllFilters(),
+                        selectedColor: Colors.red[100],
+                        selected: false,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           
@@ -339,107 +335,117 @@ class _FeedScreenState extends State<FeedScreen> {
     }
 
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.red.shade400,
-              ),
+      return SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red.shade400,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Error loading feed',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: _loadFeedItems,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 24),
-            Text(
-              'Error loading feed',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _error!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _loadFeedItems,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-            ),
-          ],
+          ),
         ),
       );
     }
 
     if (_filteredItems.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.inbox_outlined,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              _feedItems.isEmpty ? 'No feed items' : 'No items match your filters',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _feedItems.isEmpty 
-                  ? 'Connect your data sources to see personalized content'
-                  : 'Try adjusting your search or filters',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            if (_feedItems.isEmpty)
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pushNamed(context, '/login');
-                },
-                icon: const Icon(Icons.settings),
-                label: const Text('Setup Connectors'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      return SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.inbox_outlined,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
-              )
-            else
-              ElevatedButton.icon(
-                onPressed: _clearAllFilters,
-                icon: const Icon(Icons.clear_all),
-                label: const Text('Clear Filters'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                const SizedBox(height: 24),
+                Text(
+                  _feedItems.isEmpty ? 'No feed items' : 'No items match your filters',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-          ],
+                const SizedBox(height: 8),
+                Text(
+                  _feedItems.isEmpty 
+                      ? 'Connect your data sources to see personalized content'
+                      : 'Try adjusting your search or filters',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                if (_feedItems.isEmpty)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/login');
+                    },
+                    icon: const Icon(Icons.settings),
+                    label: const Text('Setup Connectors'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: _clearAllFilters,
+                    icon: const Icon(Icons.clear_all),
+                    label: const Text('Clear Filters'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       );
     }

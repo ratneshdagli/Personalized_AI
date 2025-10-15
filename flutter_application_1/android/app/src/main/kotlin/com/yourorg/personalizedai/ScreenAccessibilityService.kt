@@ -7,8 +7,13 @@ import android.content.Intent
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * ScreenAccessibilityService
@@ -25,6 +30,13 @@ class ScreenAccessibilityService : AccessibilityService() {
 
     private var lastEmitTimeMs: Long = 0
     private val minEmitIntervalMs: Long = 3500 // conservative rate limit
+
+    private val okHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .build()
+    }
 
     private val whitelistPackages = setOf(
         // Add common messaging/media apps if user opts in
@@ -70,6 +82,11 @@ class ScreenAccessibilityService : AccessibilityService() {
 
         if (texts.length() == 0) return
 
+        // Check if this is WhatsApp and handle specifically
+        if (pkg == "com.whatsapp") {
+            handleWhatsAppAccessibilityEvent(texts, now)
+        }
+
         val payload = JSONObject().apply {
             put("package", pkg)
             put("text_nodes", texts)
@@ -105,6 +122,47 @@ class ScreenAccessibilityService : AccessibilityService() {
         val intent = Intent(NotificationCaptureService.ACTION_CONTEXT_EVENT)
         intent.putExtra(NotificationCaptureService.EXTRA_EVENT_JSON, event.toString())
         context.sendBroadcast(intent)
+    }
+
+    private fun handleWhatsAppAccessibilityEvent(texts: JSONArray, timestamp: Long) {
+        val prefs = getSharedPreferences(NotificationCaptureService.PREFS_NAME, Context.MODE_PRIVATE)
+        val backendUrl = prefs.getString(NotificationCaptureService.KEY_BACKEND_URL, null) ?: return
+        val userId = prefs.getString(NotificationCaptureService.KEY_USER_ID, "device") ?: "device"
+
+        // Combine all text nodes into a single message
+        val combinedText = StringBuilder()
+        for (i in 0 until texts.length()) {
+            val text = texts.getString(i)
+            if (text.isNotEmpty()) {
+                combinedText.append(text).append(" ")
+            }
+        }
+
+        val messageText = combinedText.toString().trim()
+        if (messageText.isEmpty()) return
+
+        val whatsappData = JSONObject().apply {
+            put("sender", "WhatsApp User") // We can't easily extract sender from accessibility
+            put("message", messageText)
+            put("timestamp", timestamp)
+            put("user_id", userId)
+        }
+
+        Thread {
+            try {
+                val mediaType = "application/json; charset=utf-8".toMediaType()
+                val body = whatsappData.toString().toRequestBody(mediaType)
+                val request = Request.Builder()
+                    .url(backendUrl.trimEnd('/') + "/api/whatsapp/add")
+                    .post(body)
+                    .build()
+                val response = okHttpClient.newCall(request).execute()
+                response.close()
+                Log.d(TAG, "WhatsApp accessibility content forwarded successfully")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed to forward WhatsApp accessibility content", t)
+            }
+        }.start()
     }
 
     private fun isAdvancedModeEnabled(context: Context): Boolean {

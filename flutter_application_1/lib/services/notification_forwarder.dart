@@ -44,6 +44,14 @@ class NotificationForwarderService {
     final res = await _methods.invokeMethod('getStatus');
     return Map<String, dynamic>.from(res as Map);
   }
+
+  static Future<void> openNotificationSettings() async {
+    await _methods.invokeMethod('openNotificationListenerSettings');
+  }
+
+  static Future<void> openAccessibilitySettings() async {
+    await _methods.invokeMethod('openAccessibilitySettings');
+  }
 }
 
 

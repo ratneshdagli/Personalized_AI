@@ -4,12 +4,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import android.provider.Settings
 
 class MainActivity : FlutterActivity() {
     private val eventChannelName = "com.yourorg.personalizedai/context_events"
@@ -99,9 +101,19 @@ class MainActivity : FlutterActivity() {
                             "advancedAccessibility" to prefs.getBoolean(
                                 com.yourorg.personalizedai.ScreenAccessibilityService.KEY_ADVANCED_ENABLED,
                                 false
-                            )
+                            ),
+                            "notificationAccessEnabled" to isNotificationListenerEnabled(),
+                            "accessibilityEnabled" to isAccessibilityServiceEnabled()
                         )
                         result.success(status)
+                    }
+                    "openNotificationListenerSettings" -> {
+                        startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
+                    }
+                    "openAccessibilitySettings" -> {
+                        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
@@ -111,7 +123,12 @@ class MainActivity : FlutterActivity() {
     private fun registerReceiverIfNeeded() {
         if (!receiverRegistered) {
             val filter = IntentFilter(com.yourorg.personalizedai.NotificationCaptureService.ACTION_CONTEXT_EVENT)
-            registerReceiver(receiver, filter)
+            // Add the RECEIVER_NOT_EXPORTED flag for Android 13+ (API 33+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(receiver, filter)
+            }
             receiverRegistered = true
         }
     }
@@ -126,5 +143,17 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiverIfNeeded()
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        val cn = componentName.packageName
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
+        return flat.contains(cn)
+    }
+
+    private fun isAccessibilityServiceEnabled(): Boolean {
+        val expected = "${packageName}/com.yourorg.personalizedai.ScreenAccessibilityService"
+        val flat = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+        return flat.split(":").any { it.equals(expected, ignoreCase = true) }
     }
 }

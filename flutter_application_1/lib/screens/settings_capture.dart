@@ -30,6 +30,31 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
       _userId = (status['userId'] ?? 'device') as String;
       _localOnly = !_serverForwarding;
     });
+    if (mounted) {
+      // Gently prompt to enable permissions if missing
+      final notifOk = status['notificationAccessEnabled'] == true;
+      final accOk = status['accessibilityEnabled'] == true;
+      if (!notifOk) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Grant Notification Access to capture events'),
+            action: SnackBarAction(label: 'Open', onPressed: () {
+              NotificationForwarderService.openNotificationSettings();
+            }),
+          ),
+        );
+      }
+      if (_advancedAccessibility && !accOk) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Enable Accessibility service for Advanced Capture'),
+            action: SnackBarAction(label: 'Open', onPressed: () {
+              NotificationForwarderService.openAccessibilitySettings();
+            }),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _toggleServerForwarding(bool value) async {
@@ -55,7 +80,7 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
           Card(
             child: SwitchListTile(
               title: const Text('Forward to Server'),
-              subtitle: const Text('Send sanitized context events to backend for personalization'),
+              subtitle: const Text('Send WhatsApp messages and other context events to backend for personalization'),
               value: _serverForwarding,
               onChanged: _toggleServerForwarding,
             ),
@@ -70,8 +95,33 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
           ),
           Card(
             child: SwitchListTile(
+              title: const Text('WhatsApp Notification Capture'),
+              subtitle: const Text('Capture WhatsApp messages from notifications (requires Notification Access permission)'),
+              value: _serverForwarding, // Use server forwarding as proxy for WhatsApp capture
+              onChanged: (v) async {
+                if (v) {
+                  // Check if notification access is enabled
+                  final status = await NotificationForwarderService.getCaptureStatus();
+                  if (status['notificationAccessEnabled'] != true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: const Text('Enable Notification Access to capture WhatsApp messages'),
+                        action: SnackBarAction(label: 'Open Settings', onPressed: () {
+                          NotificationForwarderService.openNotificationSettings();
+                        }),
+                      ),
+                    );
+                    return;
+                  }
+                }
+                await _toggleServerForwarding(v);
+              },
+            ),
+          ),
+          Card(
+            child: SwitchListTile(
               title: const Text('Advanced Capture (Accessibility)'),
-              subtitle: const Text('Highly sensitive. Rate-limited; excludes sensitive apps; opt-in only.'),
+              subtitle: const Text('Capture WhatsApp content via screen reading (requires Accessibility permission)'),
               value: _advancedAccessibility,
               onChanged: (v) async {
                 if (v) {
@@ -79,7 +129,7 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('Enable Advanced Capture?'),
-                      content: const Text('This uses Android AccessibilityService to read limited visible text in apps you choose. It is strictly opt-in, rate-limited, and excludes sensitive apps. You can disable at any time in Settings.'),
+                      content: const Text('This uses Android AccessibilityService to read limited visible text in WhatsApp and other apps you choose. It is strictly opt-in, rate-limited, and excludes sensitive apps. You can disable at any time in Settings.'),
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
                         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enable')),
@@ -89,6 +139,10 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
                   if (ok != true) return;
                 }
                 await _toggleAdvanced(v);
+                if (v) {
+                  // Navigate user to system settings
+                  await NotificationForwarderService.openAccessibilitySettings();
+                }
               },
             ),
           ),
@@ -130,9 +184,9 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
           const SizedBox(height: 8),
           const Text('Play Store disclosure (to copy into listing):'),
           const SizedBox(height: 6),
-          const Text('- Notification access: Reads notification metadata you choose to personalize your feed. Forwarding off-device is off by default.'),
+          const Text('- Notification access: Reads WhatsApp and other app notifications to personalize your feed. Forwarding off-device is off by default.'),
           const SizedBox(height: 4),
-          const Text('- Accessibility: Captures limited on-screen text in apps you select. Strictly opt-in, rate-limited, excludes sensitive apps.'),
+          const Text('- Accessibility: Captures limited on-screen text in WhatsApp and other apps you select. Strictly opt-in, rate-limited, excludes sensitive apps.'),
           const SizedBox(height: 16),
         ],
       ),

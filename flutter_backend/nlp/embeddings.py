@@ -9,21 +9,11 @@ import numpy as np
 from typing import List, Optional, Union
 import json
 
-# Primary: sentence-transformers
-try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
-    logging.warning("sentence-transformers not available. Install with: pip install sentence-transformers")
-
-# Fallback: Hugging Face Inference API
-try:
-    import requests
-    HF_AVAILABLE = True
-except ImportError:
-    HF_AVAILABLE = False
-    logging.warning("requests not available for Hugging Face fallback")
+# We avoid importing heavy ML libraries at module import time. They are loaded lazily when
+# an embedding is actually requested. This prevents import-time crashes on systems where
+# compiled dependencies (numpy/scipy/faiss/etc.) are incompatible or not installed.
+SENTENCE_TRANSFORMERS_AVAILABLE = False
+HF_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -38,18 +28,34 @@ class EmbeddingsPipeline:
         self.model = None
         self.hf_api_key = os.getenv("HF_API_KEY")
         self.hf_model_url = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
-        
-        # Initialize primary model
-        if SENTENCE_TRANSFORMERS_AVAILABLE:
-            try:
-                # Use a lightweight, fast model for embeddings
-                self.model = SentenceTransformer('all-MiniLM-L6-v2')
-                logger.info("sentence-transformers model loaded successfully")
-            except Exception as e:
-                logger.error(f"Failed to load sentence-transformers model: {e}")
-                self.model = None
-        else:
-            logger.warning("sentence-transformers not available, will use Hugging Face fallback")
+        # model is loaded lazily by _ensure_model_loaded
+
+    def _ensure_model_loaded(self):
+        """Load sentence-transformers model or mark it unavailable.
+
+        This is called lazily to avoid import-time side effects.
+        """
+        if self.model is not None:
+            return
+        # Try to import local sentence-transformers
+        try:
+            from sentence_transformers import SentenceTransformer
+            # instantiate model
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+            logger.info("sentence-transformers model loaded successfully")
+            global SENTENCE_TRANSFORMERS_AVAILABLE
+            SENTENCE_TRANSFORMERS_AVAILABLE = True
+            return
+        except Exception as e:
+            logger.warning(f"Local sentence-transformers not available or failed to load: {e}")
+            self.model = None
+        # Try to ensure requests is available for HF fallback
+        try:
+            import requests  # noqa: F401
+            global HF_AVAILABLE
+            HF_AVAILABLE = True
+        except Exception:
+            HF_AVAILABLE = False
     
     def embed_text(self, text: str) -> Optional[List[float]]:
         """
@@ -59,6 +65,9 @@ class EmbeddingsPipeline:
         if not text or not text.strip():
             return None
         
+        # Ensure model/loading state is available
+        self._ensure_model_loaded()
+
         # Try local model first
         if self.model:
             try:
@@ -90,6 +99,9 @@ class EmbeddingsPipeline:
         if not valid_texts:
             return [None] * len(texts)
         
+        # Ensure model/loading state
+        self._ensure_model_loaded()
+
         # Try local model first
         if self.model:
             try:
@@ -208,18 +220,18 @@ class EmbeddingsPipeline:
         """
         Get the dimension of embeddings produced by this pipeline
         """
-        if self.model:
-            # all-MiniLM-L6-v2 produces 384-dimensional embeddings
-            return 384
-        else:
-            # Hugging Face all-MiniLM-L6-v2 also produces 384 dimensions
-            return 384
+        # all-MiniLM-L6-v2 produces 384-dimensional embeddings regardless of backend
+        return 384
 
-# Global instance
-embeddings_pipeline = EmbeddingsPipeline()
+# Lazy global pipeline
+_embeddings_pipeline: Optional[EmbeddingsPipeline] = None
+
 
 def get_embeddings_pipeline() -> EmbeddingsPipeline:
-    """Get the global embeddings pipeline instance"""
-    return embeddings_pipeline
+    """Get or create the global EmbeddingsPipeline instance lazily."""
+    global _embeddings_pipeline
+    if _embeddings_pipeline is None:
+        _embeddings_pipeline = EmbeddingsPipeline()
+    return _embeddings_pipeline
 
 

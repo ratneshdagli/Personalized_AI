@@ -140,7 +140,7 @@ class _FeedCardState extends State<FeedCard> with SingleTickerProviderStateMixin
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             child: GlassmorphicContainer(
             width: double.infinity,
-            height: 0, // ignored by child; GlassmorphicContainer requires double but layout by child
+            height: 180, // ensure visible height so content renders
             borderRadius: 20,
             blur: 18,
             alignment: Alignment.center,

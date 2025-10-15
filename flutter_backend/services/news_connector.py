@@ -6,7 +6,14 @@ Fetches news articles and processes them into feed items
 import os
 import logging
 import json
-import feedparser
+try:
+    import feedparser
+    _FEEDPARSER_AVAILABLE = True
+except ImportError:
+    feedparser = None
+    _FEEDPARSER_AVAILABLE = False
+    # We'll use a lightweight fallback parser when feedparser is not installed
+    import xml.etree.ElementTree as ET
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import requests
@@ -64,13 +71,26 @@ class NewsConnector:
                 logger.info(f"Fetching RSS feed: {feed_url}")
                 
                 # Parse RSS feed
-                feed = feedparser.parse(feed_url)
-                
-                if feed.bozo:
-                    logger.warning(f"RSS feed parsing warning for {feed_url}: {feed.bozo_exception}")
-                
+                if _FEEDPARSER_AVAILABLE and feedparser:
+                    feed = feedparser.parse(feed_url)
+                    if getattr(feed, 'bozo', False):
+                        logger.warning(f"RSS feed parsing warning for {feed_url}: {getattr(feed, 'bozo_exception', '')}")
+                    entries = list(getattr(feed, 'entries', []))[:max_items_per_feed]
+                else:
+                    # Fallback: fetch raw XML and parse basic <item> elements
+                    try:
+                        resp = requests.get(feed_url, timeout=15)
+                        resp.raise_for_status()
+                        root = ET.fromstring(resp.content)
+                        # Find items in channel or feed
+                        items = root.findall('.//item') or root.findall('.//entry')
+                        entries = items[:max_items_per_feed]
+                    except Exception as e:
+                        logger.error(f"Fallback RSS fetch failed for {feed_url}: {e}")
+                        entries = []
+
                 # Process feed items
-                for entry in feed.entries[:max_items_per_feed]:
+                for entry in entries:
                     try:
                         article = self._parse_rss_entry(entry, feed_url)
                         if article:
@@ -78,8 +98,8 @@ class NewsConnector:
                     except Exception as e:
                         logger.error(f"Failed to parse RSS entry: {e}")
                         continue
-                
-                logger.info(f"Fetched {len(feed.entries)} items from {feed_url}")
+
+                logger.info(f"Fetched {len(entries)} items from {feed_url}")
                 
             except Exception as e:
                 logger.error(f"Failed to fetch RSS feed {feed_url}: {e}")

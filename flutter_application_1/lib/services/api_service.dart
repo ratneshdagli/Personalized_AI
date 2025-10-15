@@ -120,4 +120,21 @@ class ApiService {
         .timeout(ApiConfig.timeout);
     return response.statusCode == 200 || response.statusCode == 202;
   }
+
+  Future<bool> postWhatsAppMessage(Map<String, dynamic> messageData) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/whatsapp/add'),
+            headers: ApiConfig.defaultHeaders,
+            body: json.encode(messageData),
+          )
+          .timeout(ApiConfig.timeout);
+      
+      return response.statusCode == 200 || response.statusCode == 202;
+    } catch (e) {
+      print('Error posting WhatsApp message: $e');
+      return false;
+    }
+  }
 }

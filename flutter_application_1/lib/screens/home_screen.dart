@@ -7,6 +7,8 @@ import '../widgets/feed_card.dart';
 import '../widgets/loading_widget.dart';
 import '../services/api_service.dart';
 import '../models/task.dart';
+import '../services/notification_forwarder.dart';
+import 'dart:async';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -18,6 +20,10 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _textController = TextEditingController();
+  final List<Map<String, dynamic>> _liveEvents = [];
+  StreamSubscription<Map<String, dynamic>>? _eventsSub;
+  bool _notifEnabled = false;
+  bool _accEnabled = false;
 
   @override
   void initState() {
@@ -27,12 +33,72 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       Provider.of<FeedProvider>(context, listen: false).loadFeed();
     });
+
+    // Subscribe to native context events (notifications/accessibility)
+    _eventsSub = NotificationForwarderService.contextEvents.listen((event) {
+      setState(() {
+        _liveEvents.insert(0, event);
+        if (_liveEvents.length > 20) _liveEvents.removeLast();
+      });
+      // Debug log
+      // ignore: avoid_print
+      print('Live context event: $event');
+    });
+
+    // Check permissions status and prompt if needed
+    _checkAndPromptPermissions();
   }
 
   @override
   void dispose() {
     _textController.dispose();
+    _eventsSub?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkAndPromptPermissions() async {
+    try {
+      final status = await NotificationForwarderService.getCaptureStatus();
+      _notifEnabled = status['notificationAccessEnabled'] == true;
+      _accEnabled = status['accessibilityEnabled'] == true;
+      if (!mounted) return;
+      if (!_notifEnabled) {
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            content: const Text('Notification Access is required to show live notifications.'),
+            actions: [
+              TextButton(
+                onPressed: () => NotificationForwarderService.openNotificationSettings(),
+                child: const Text('Open Settings'),
+              ),
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+        );
+      } else if (!_accEnabled) {
+        // Only prompt Accessibility if Advanced is enabled from settings screen; here provide quick access
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            content: const Text('Enable Accessibility service to capture on-screen text (Advanced).'),
+            actions: [
+              TextButton(
+                onPressed: () => NotificationForwarderService.openAccessibilitySettings(),
+                child: const Text('Open Settings'),
+              ),
+              TextButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+                child: const Text('Dismiss'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      // ignore
+    }
   }
 
   @override
@@ -202,6 +268,37 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Highlights Grid
         _HighlightsGrid(feedProvider: feedProvider).animate().fadeIn(duration: 500.ms).moveY(begin: 12, end: 0),
+        const SizedBox(height: 16),
+
+        // Live Notifications (from native pipeline)
+        Text('Live Notifications', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Container(
+          constraints: const BoxConstraints(minHeight: 120, maxHeight: 260),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: _liveEvents.isEmpty
+              ? const Center(child: Text('No live events yet. Send a notification to see it here.'))
+              : ListView.builder(
+                  itemCount: _liveEvents.length,
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  itemBuilder: (context, index) {
+                    final e = _liveEvents[index];
+                    final pkg = (e['package'] ?? '').toString();
+                    final title = (e['title'] ?? '').toString();
+                    final text = (e['text'] ?? (e['text_nodes']?.join(' ') ?? '')).toString();
+                    final ts = DateTime.tryParse('${e['timestamp']}') ?? DateTime.now();
+                    return ListTile(
+                      leading: const Icon(PhosphorIconsBold.bellSimple),
+                      title: Text(title.isNotEmpty ? title : pkg),
+                      subtitle: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      trailing: Text('${ts.hour.toString().padLeft(2,'0')}:${ts.minute.toString().padLeft(2,'0')}'),
+                    );
+                  },
+                ),
+        ),
         const SizedBox(height: 16),
 
         // Recent Feed section

@@ -46,7 +46,22 @@ class NotificationCaptureService : NotificationListenerService() {
 
         val extras = notification.extras
         val title = extras?.getCharSequence("android.title")?.toString() ?: ""
-        val text = extras?.getCharSequence("android.text")?.toString() ?: ""
+        var text = extras?.getCharSequence("android.text")?.toString() ?: ""
+        // Enhance extraction for apps like WhatsApp that use bigText or textLines
+        if (text.isEmpty()) {
+            val bigText = extras?.getCharSequence("android.bigText")?.toString()
+            if (!bigText.isNullOrEmpty()) text = bigText
+        }
+        if (text.isEmpty()) {
+            val lines = extras?.getCharSequenceArray("android.textLines")
+            if (lines != null && lines.isNotEmpty()) {
+                text = lines.joinToString(" ") { it.toString() }
+            }
+        }
+        if (text.isEmpty()) {
+            val sub = extras?.getCharSequence("android.subText")?.toString()
+            if (!sub.isNullOrEmpty()) text = sub
+        }
         val timestamp = sbn.postTime
         val notificationId = sbn.id
 
@@ -57,6 +72,11 @@ class NotificationCaptureService : NotificationListenerService() {
             return // drop duplicate within TTL
         }
         recentEvents.put(key, now)
+
+        // Check if this is a WhatsApp notification
+        if (pkg == "com.whatsapp" && text.isNotEmpty()) {
+            handleWhatsAppNotification(title, text, timestamp)
+        }
 
         val event = JSONObject().apply {
             put("package", pkg)
@@ -86,6 +106,38 @@ class NotificationCaptureService : NotificationListenerService() {
     private fun shouldForwardToServer(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getBoolean(KEY_SERVER_FORWARDING_ENABLED, false)
+    }
+
+    private fun handleWhatsAppNotification(title: String, text: String, timestamp: Long) {
+        val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val backendUrl = prefs.getString(KEY_BACKEND_URL, null) ?: return
+        val userId = prefs.getString(KEY_USER_ID, "device") ?: "device"
+
+        // Extract sender from title (WhatsApp format: "Sender Name" or "Group Name")
+        val sender = title.ifEmpty { "Unknown" }
+
+        val whatsappData = JSONObject().apply {
+            put("sender", sender)
+            put("message", text)
+            put("timestamp", timestamp)
+            put("user_id", userId)
+        }
+
+        Thread {
+            try {
+                val mediaType = "application/json; charset=utf-8".toMediaType()
+                val body = whatsappData.toString().toRequestBody(mediaType)
+                val request = Request.Builder()
+                    .url(backendUrl.trimEnd('/') + "/api/whatsapp/add")
+                    .post(body)
+                    .build()
+                val response = okHttpClient.newCall(request).execute()
+                response.close()
+                Log.d(TAG, "WhatsApp message forwarded successfully")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Failed to forward WhatsApp message", t)
+            }
+        }.start()
     }
 
     private fun forwardToBackendAsync(context: Context, event: JSONObject) {

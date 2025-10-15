@@ -36,14 +36,17 @@ class VectorStore:
         self.id_mapping = {}  # Maps FAISS index -> (feed_item_id, user_id)
         self.embeddings_pipeline = get_embeddings_pipeline()
         self.dimension = self.embeddings_pipeline.get_embedding_dimension()
-        
+
         os.makedirs(os.path.dirname(index_path), exist_ok=True)
-        self._initialize_index()
+        # Delay index initialization until first use to avoid import-time failures
+        self._initialized = False
     
     def _initialize_index(self):
         """Initialize or load FAISS index"""
         if not FAISS_AVAILABLE:
             logger.error("FAISS not available, vector search disabled")
+            return
+        if self._initialized:
             return
         try:
             if os.path.exists(f"{self.index_path}.faiss"):
@@ -52,16 +55,37 @@ class VectorStore:
                     self.id_mapping = pickle.load(f)
                 logger.info(f"Loaded existing vector index with {self.index.ntotal} vectors")
             else:
-                self.index = faiss.IndexFlatIP(self.dimension)
+                # Prefer IndexFlatIP if available, otherwise try IndexFlatL2
+                if hasattr(faiss, 'IndexFlatIP'):
+                    self.index = faiss.IndexFlatIP(self.dimension)
+                elif hasattr(faiss, 'IndexFlatL2'):
+                    self.index = faiss.IndexFlatL2(self.dimension)
+                else:
+                    logger.error("FAISS installed but no suitable IndexFlat* class found")
+                    self.index = None
                 self.id_mapping = {}
                 logger.info("Created new vector index")
         except Exception as e:
             logger.error(f"Failed to initialize vector index: {e}")
-            self.index = faiss.IndexFlatIP(self.dimension)
+            # Initialization failed; set index to None to disable vector ops
+            try:
+                if hasattr(faiss, 'IndexFlatL2'):
+                    self.index = faiss.IndexFlatL2(self.dimension)
+                else:
+                    self.index = None
+            except Exception:
+                self.index = None
             self.id_mapping = {}
+        finally:
+            self._initialized = True
     
     def add_embedding(self, feed_item_id: int, embedding: List[float], user_id: Optional[int] = None) -> bool:
         """Add an embedding to the vector store"""
+        if not FAISS_AVAILABLE:
+            logger.warning("add_embedding: FAISS not available, skipping")
+            return False
+        if not self._initialized:
+            self._initialize_index()
         if not self.index or not embedding:
             return False
         try:
@@ -100,8 +124,17 @@ class VectorStore:
                     FeedItem.id != exclude_feed_item_id,
                     FeedItem.embedding.isnot(None)
                 ).all()
-                
-                self.index = faiss.IndexFlatIP(self.dimension)
+                # Create a fresh index
+                if not FAISS_AVAILABLE:
+                    logger.error("FAISS not available, cannot rebuild index")
+                    return
+                if hasattr(faiss, 'IndexFlatIP'):
+                    self.index = faiss.IndexFlatIP(self.dimension)
+                elif hasattr(faiss, 'IndexFlatL2'):
+                    self.index = faiss.IndexFlatL2(self.dimension)
+                else:
+                    logger.error("FAISS has no suitable IndexFlat* implementation")
+                    self.index = None
                 self.id_mapping = {}
                 
                 for item in feed_items:
@@ -122,6 +155,10 @@ class VectorStore:
     def search_by_embedding(self, query_embedding: List[float], user_id: int,
                            top_k: int = 10, threshold: float = 0.0) -> List[Dict[str, Any]]:
         """Search using precomputed embedding"""
+        if not FAISS_AVAILABLE:
+            return []
+        if not self._initialized:
+            self._initialize_index()
         if not self.index or self.index.ntotal == 0 or not query_embedding:
             return []
         try:

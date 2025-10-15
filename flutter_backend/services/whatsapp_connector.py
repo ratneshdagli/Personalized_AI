@@ -388,6 +388,78 @@ Conversation:
         return saved_items
 
 
+    def process_and_store_message(self, message_data: Dict[str, Any], user_id: int) -> Optional[FeedItem]:
+        """
+        Simple function to process and store a WhatsApp message
+        
+        Args:
+            message_data: Dictionary containing sender, message, timestamp
+            user_id: User ID
+            
+        Returns:
+            Created FeedItem or None
+        """
+        try:
+            # Extract message components
+            sender = message_data.get('sender', 'Unknown')
+            message = message_data.get('message', '')
+            timestamp = message_data.get('timestamp')
+            
+            if not message:
+                return None
+            
+            # Parse timestamp
+            if timestamp:
+                try:
+                    if isinstance(timestamp, (int, float)):
+                        # Assume milliseconds timestamp
+                        parsed_time = datetime.fromtimestamp(timestamp / 1000.0)
+                    else:
+                        parsed_time = datetime.fromisoformat(str(timestamp).replace('Z', '+00:00'))
+                except:
+                    parsed_time = datetime.now()
+            else:
+                parsed_time = datetime.now()
+            
+            # Clean content
+            cleaned_content = clean_text(message)
+            
+            # Generate summary
+            summary = f"WhatsApp message from {sender}: {cleaned_content[:100]}..."
+            
+            # Extract tasks
+            tasks = self._extract_tasks_from_content(cleaned_content)
+            
+            # Calculate priority and relevance
+            priority, relevance = self._calculate_priority_relevance(
+                cleaned_content, {sender}, tasks
+            )
+            
+            # Create FeedItem
+            feed_item = FeedItem(
+                user_id=user_id,
+                title=f"WhatsApp: {sender}",
+                content=cleaned_content,
+                summary=summary,
+                source="whatsapp",
+                origin_id=f"whatsapp_msg_{sender}_{parsed_time.timestamp()}",
+                priority=priority,
+                relevance=relevance,
+                published_at=parsed_time,
+                meta_data={
+                    'sender': sender,
+                    'extracted_tasks': tasks,
+                    'message_data': message_data
+                }
+            )
+            
+            return feed_item
+            
+        except Exception as e:
+            logger.error(f"Error processing WhatsApp message: {e}")
+            return None
+
+
 def get_whatsapp_connector() -> WhatsAppConnector:
     """Get WhatsApp connector instance"""
     return WhatsAppConnector()

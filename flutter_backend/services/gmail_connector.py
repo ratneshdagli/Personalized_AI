@@ -177,7 +177,7 @@ class GmailConnector:
         except:
             return ""
     
-    def get_credentials(self, user_id: int) -> Optional[Any]:
+    def get_credentials(self, user_id: int) -> Optional[Credentials]:
         """
         Get valid Gmail credentials for user
         Refreshes token if needed
@@ -197,10 +197,8 @@ class GmailConnector:
                 if not config or not config.access_token:
                     return None
                 
-                # Create credentials object (only available if Google APIs installed)
-                # Use dynamic import to avoid NameError when typing module is not available
-                from google.oauth2.credentials import Credentials as _Credentials
-                credentials = _Credentials(
+                # Create credentials object
+                credentials = Credentials(
                     token=self._decrypt_token(config.access_token),
                     refresh_token=self._decrypt_token(config.refresh_token) if config.refresh_token else None,
                     token_uri="https://oauth2.googleapis.com/token",

@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from routes.feed import router as feed_router
 from routes.tasks import router as tasks_router
 from routes.search import router as search_router
@@ -57,10 +58,35 @@ app.include_router(instagram_router, prefix="/api")
 app.include_router(telegram_router, prefix="/api")
 app.include_router(calendar_router, prefix="/api")
 
+# CORS (dev-friendly defaults; restrict in production)
+allowed_origins = [
+    "http://localhost",
+    "http://localhost:80",
+    "http://localhost:8080",
+    "http://localhost:3000",
+    "http://127.0.0.1",
+    "http://127.0.0.1:80",
+    "http://127.0.0.1:8080",
+    "http://10.0.2.2:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins + ["*"],  # allow all during development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Root endpoint
 @app.get("/")
 def root():
     return {"message": "Welcome to Personal AI Feed Backend!"}
+
+# Health endpoint for container health checks
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
