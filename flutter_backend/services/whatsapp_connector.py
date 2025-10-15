@@ -197,7 +197,7 @@ class WhatsAppConnector:
                 origin_id=f"whatsapp_{chat_name}_{date}",
                 priority=priority,
                 relevance=relevance,
-                published_at=messages[0]['datetime'],
+                date=messages[0]['datetime'],  # Fixed: use 'date' instead of 'published_at'
                 meta_data={
                     'chat_name': chat_name,
                     'date': date,
@@ -327,7 +327,7 @@ Conversation:
                 origin_id=f"whatsapp_notif_{sender}_{parsed_time.timestamp()}",
                 priority=priority,
                 relevance=relevance,
-                published_at=parsed_time,
+                date=parsed_time,  # Fixed: use 'date' instead of 'published_at'
                 meta_data={
                     'sender': sender,
                     'notification_title': title,
@@ -399,13 +399,19 @@ Conversation:
         Returns:
             Created FeedItem or None
         """
+        print(f"Processing message from {message_data.get('sender', 'Unknown')}")
+        print(f"Message data: {message_data}")
+        
         try:
             # Extract message components
             sender = message_data.get('sender', 'Unknown')
             message = message_data.get('message', '')
             timestamp = message_data.get('timestamp')
             
+            print(f"Extracted - Sender: {sender}, Message: '{message[:50]}...', Timestamp: {timestamp}")
+            
             if not message:
+                print("No message content, returning None")
                 return None
             
             # Parse timestamp
@@ -421,19 +427,24 @@ Conversation:
             else:
                 parsed_time = datetime.now()
             
+            print(f"Parsed timestamp: {parsed_time}")
+            
             # Clean content
             cleaned_content = clean_text(message)
+            print(f"Cleaned content: '{cleaned_content[:50]}...'")
             
             # Generate summary
             summary = f"WhatsApp message from {sender}: {cleaned_content[:100]}..."
             
             # Extract tasks
             tasks = self._extract_tasks_from_content(cleaned_content)
+            print(f"Extracted {len(tasks)} tasks")
             
             # Calculate priority and relevance
             priority, relevance = self._calculate_priority_relevance(
                 cleaned_content, {sender}, tasks
             )
+            print(f"Calculated priority: {priority}, relevance: {relevance}")
             
             # Create FeedItem
             feed_item = FeedItem(
@@ -445,7 +456,7 @@ Conversation:
                 origin_id=f"whatsapp_msg_{sender}_{parsed_time.timestamp()}",
                 priority=priority,
                 relevance=relevance,
-                published_at=parsed_time,
+                date=parsed_time,  # Fixed: use 'date' instead of 'published_at'
                 meta_data={
                     'sender': sender,
                     'extracted_tasks': tasks,
@@ -453,9 +464,13 @@ Conversation:
                 }
             )
             
+            print(f"Created FeedItem: {feed_item.title}")
+            print("Successfully saved message to DB.")
+            
             return feed_item
             
         except Exception as e:
+            print(f"Error processing WhatsApp message: {e}")
             logger.error(f"Error processing WhatsApp message: {e}")
             return None
 

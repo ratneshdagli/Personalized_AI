@@ -9,12 +9,20 @@ class NotificationForwarderService {
   static Stream<Map<String, dynamic>>? _cachedStream;
 
   static Stream<Map<String, dynamic>> get contextEvents {
+    print('=== NOTIFICATION_FORWARDER: Getting context events stream ===');
     _cachedStream ??= _events.receiveBroadcastStream().map((dynamic data) {
       try {
+        print('=== NOTIFICATION_FORWARDER: Received raw data ===');
+        print('Raw data: $data');
         final map = json.decode(data as String) as Map<String, dynamic>;
+        print('=== NOTIFICATION_FORWARDER: Parsed data ===');
+        print('Parsed map: $map');
         return map;
-      } catch (_) {
-        return <String, dynamic>{'raw': data};
+      } catch (e) {
+        print('=== NOTIFICATION_FORWARDER: Error parsing data ===');
+        print('Error: $e');
+        print('Raw data: $data');
+        return <String, dynamic>{'raw': data, 'error': e.toString()};
       }
     });
     return _cachedStream!;
@@ -41,8 +49,17 @@ class NotificationForwarderService {
   }
 
   static Future<Map<String, dynamic>> getCaptureStatus() async {
-    final res = await _methods.invokeMethod('getStatus');
-    return Map<String, dynamic>.from(res as Map);
+    print('=== NOTIFICATION_FORWARDER: Getting capture status ===');
+    try {
+      final res = await _methods.invokeMethod('getStatus');
+      print('=== NOTIFICATION_FORWARDER: Status received ===');
+      print('Status: $res');
+      return Map<String, dynamic>.from(res as Map);
+    } catch (e) {
+      print('=== NOTIFICATION_FORWARDER: Error getting status ===');
+      print('Error: $e');
+      return <String, dynamic>{'error': e.toString()};
+    }
   }
 
   static Future<void> openNotificationSettings() async {
@@ -51,6 +68,19 @@ class NotificationForwarderService {
 
   static Future<void> openAccessibilitySettings() async {
     await _methods.invokeMethod('openAccessibilitySettings');
+  }
+
+  static Future<bool> sendTestNotification() async {
+    print('=== NOTIFICATION_FORWARDER: Sending test notification ===');
+    try {
+      final res = await _methods.invokeMethod('testNotification');
+      print('=== NOTIFICATION_FORWARDER: Test notification sent ===');
+      return res == true;
+    } catch (e) {
+      print('=== NOTIFICATION_FORWARDER: Error sending test notification ===');
+      print('Error: $e');
+      return false;
+    }
   }
 }
 

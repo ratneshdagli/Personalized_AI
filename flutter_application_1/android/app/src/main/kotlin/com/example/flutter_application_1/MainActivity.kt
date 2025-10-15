@@ -22,9 +22,15 @@ class MainActivity : FlutterActivity() {
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
+            android.util.Log.d("MainActivity", "Received broadcast with action: $action")
             if (action == com.yourorg.personalizedai.NotificationCaptureService.ACTION_CONTEXT_EVENT) {
                 val json = intent.getStringExtra(com.yourorg.personalizedai.NotificationCaptureService.EXTRA_EVENT_JSON)
-                json?.let { eventsSink?.success(it) }
+                android.util.Log.d("MainActivity", "Received notification event: $json")
+                json?.let { 
+                    android.util.Log.d("MainActivity", "Forwarding to Flutter: $it")
+                    eventsSink?.success(it)
+                    android.util.Log.d("MainActivity", "Successfully forwarded to Flutter")
+                }
             }
         }
     }
@@ -35,11 +41,13 @@ class MainActivity : FlutterActivity() {
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, eventChannelName)
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    android.util.Log.d("MainActivity", "Flutter started listening to events")
                     eventsSink = events
                     registerReceiverIfNeeded()
                 }
 
                 override fun onCancel(arguments: Any?) {
+                    android.util.Log.d("MainActivity", "Flutter stopped listening to events")
                     eventsSink = null
                     unregisterReceiverIfNeeded()
                 }
@@ -88,7 +96,7 @@ class MainActivity : FlutterActivity() {
                         val status = mapOf(
                             "serverForwarding" to prefs.getBoolean(
                                 com.yourorg.personalizedai.NotificationCaptureService.KEY_SERVER_FORWARDING_ENABLED,
-                                false
+                                true
                             ),
                             "backendUrl" to prefs.getString(
                                 com.yourorg.personalizedai.NotificationCaptureService.KEY_BACKEND_URL,
@@ -103,8 +111,11 @@ class MainActivity : FlutterActivity() {
                                 false
                             ),
                             "notificationAccessEnabled" to isNotificationListenerEnabled(),
-                            "accessibilityEnabled" to isAccessibilityServiceEnabled()
+                            "accessibilityEnabled" to isAccessibilityServiceEnabled(),
+                            "receiverRegistered" to receiverRegistered,
+                            "eventsSinkActive" to (eventsSink != null)
                         )
+                        android.util.Log.d("MainActivity", "Status: $status")
                         result.success(status)
                     }
                     "openNotificationListenerSettings" -> {
@@ -115,6 +126,22 @@ class MainActivity : FlutterActivity() {
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         result.success(true)
                     }
+                    "testNotification" -> {
+                        android.util.Log.d("MainActivity", "Sending test notification to Flutter")
+                        val testEvent = mapOf(
+                            "package" to "com.example.test",
+                            "title" to "Test Notification",
+                            "text" to "This is a test notification to verify Flutter UI is working",
+                            "timestamp" to System.currentTimeMillis(),
+                            "notificationId" to 999,
+                            "source" to "test",
+                            "meta" to mapOf<String, Any>()
+                        )
+                        val json = org.json.JSONObject(testEvent).toString()
+                        android.util.Log.d("MainActivity", "Test notification JSON: $json")
+                        eventsSink?.success(json)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -122,6 +149,7 @@ class MainActivity : FlutterActivity() {
 
     private fun registerReceiverIfNeeded() {
         if (!receiverRegistered) {
+            android.util.Log.d("MainActivity", "Registering broadcast receiver")
             val filter = IntentFilter(com.yourorg.personalizedai.NotificationCaptureService.ACTION_CONTEXT_EVENT)
             // Add the RECEIVER_NOT_EXPORTED flag for Android 13+ (API 33+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -130,6 +158,7 @@ class MainActivity : FlutterActivity() {
                 registerReceiver(receiver, filter)
             }
             receiverRegistered = true
+            android.util.Log.d("MainActivity", "Broadcast receiver registered successfully")
         }
     }
 

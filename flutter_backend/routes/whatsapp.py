@@ -119,6 +119,11 @@ async def add_whatsapp_message(
     """
     Add WhatsApp message data from mobile app (notification or accessibility capture)
     """
+    print("=" * 50)
+    print("Received POST request on /whatsapp/add")
+    print(f"Raw request data: {message_data.dict()}")
+    print("=" * 50)
+    
     try:
         # Process in background
         background_tasks.add_task(
@@ -126,12 +131,15 @@ async def add_whatsapp_message(
             message_data.dict()
         )
         
+        print(f"Background task queued for user_id: {message_data.user_id}")
+        
         return {
             "message": "WhatsApp message processing started",
             "user_id": message_data.user_id
         }
         
     except Exception as e:
+        print(f"ERROR in /whatsapp/add endpoint: {e}")
         logger.error(f"Error processing WhatsApp message: {e}")
         raise HTTPException(status_code=500, detail=f"Error processing WhatsApp message: {str(e)}")
 
@@ -163,6 +171,11 @@ async def process_notification(
 
 async def _process_whatsapp_message_background(message_data: Dict[str, Any]):
     """Background task to process WhatsApp message from mobile app"""
+    print("=" * 50)
+    print("Processing WhatsApp message in background")
+    print(f"Message data: {message_data}")
+    print("=" * 50)
+    
     try:
         connector = get_whatsapp_connector()
         
@@ -170,6 +183,8 @@ async def _process_whatsapp_message_background(message_data: Dict[str, Any]):
         from datetime import datetime
         timestamp_ms = message_data.get('timestamp', 0)
         timestamp_dt = datetime.fromtimestamp(timestamp_ms / 1000.0)
+        
+        print(f"Converted timestamp: {timestamp_ms}ms -> {timestamp_dt}")
         
         # Create notification-like data structure
         notification_data = {
@@ -180,6 +195,8 @@ async def _process_whatsapp_message_background(message_data: Dict[str, Any]):
             'user_id': int(message_data.get('user_id', '1'))  # Convert string to int
         }
         
+        print(f"Created notification data: {notification_data}")
+        
         # Process as notification data
         feed_item = connector.process_notification_data(
             notification_data, 
@@ -187,14 +204,18 @@ async def _process_whatsapp_message_background(message_data: Dict[str, Any]):
         )
         
         if feed_item:
+            print(f"Feed item created successfully: {feed_item.title}")
             # Save with embeddings
             saved_items = connector.save_feed_items_with_embeddings([feed_item])
             
+            print(f"Processed WhatsApp message: {len(saved_items)} items created for user {notification_data['user_id']}")
             logger.info(f"Processed WhatsApp message: {len(saved_items)} items created for user {notification_data['user_id']}")
         else:
+            print(f"No feed item created from WhatsApp message for user {notification_data['user_id']}")
             logger.warning(f"No feed item created from WhatsApp message for user {notification_data['user_id']}")
             
     except Exception as e:
+        print(f"ERROR in background WhatsApp processing: {e}")
         logger.error(f"Background WhatsApp message processing failed: {e}")
 
 

@@ -47,10 +47,22 @@ class ApiService {
 
       print('Response status: ${response.statusCode}');
       print('Response body length: ${response.body.length}');
+      print('Raw JSON response: ${response.body}');
 
       if (response.statusCode == 200) {
         List<dynamic> data = json.decode(response.body);
         print('Successfully fetched ${data.length} feed items');
+        
+        // Log WhatsApp items specifically
+        final whatsappItems = data.where((item) => 
+          item['source'] == 'whatsapp' || item['source'] == 'whatsapp_notification'
+        ).toList();
+        print('Found ${whatsappItems.length} WhatsApp items in response');
+        
+        for (var item in whatsappItems) {
+          print('WhatsApp item: ${item['title']} - ${item['source']}');
+        }
+        
         return data.map((item) => FeedItem.fromJson(item)).toList();
       } else {
         print('API Error: ${response.statusCode} - ${response.body}');

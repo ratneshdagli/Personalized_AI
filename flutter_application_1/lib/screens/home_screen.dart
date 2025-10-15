@@ -36,13 +36,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Subscribe to native context events (notifications/accessibility)
     _eventsSub = NotificationForwarderService.contextEvents.listen((event) {
+      print('=== FLUTTER: Received live context event ===');
+      print('Event data: $event');
       setState(() {
         _liveEvents.insert(0, event);
         if (_liveEvents.length > 20) _liveEvents.removeLast();
       });
-      // Debug log
-      // ignore: avoid_print
-      print('Live context event: $event');
+      print('Live events count: ${_liveEvents.length}');
+    }, onError: (error) {
+      print('=== FLUTTER: Error in event stream ===');
+      print('Error: $error');
     });
 
     // Check permissions status and prompt if needed
@@ -268,6 +271,61 @@ class _HomeScreenState extends State<HomeScreen> {
 
         // Highlights Grid
         _HighlightsGrid(feedProvider: feedProvider).animate().fadeIn(duration: 500.ms).moveY(begin: 12, end: 0),
+        const SizedBox(height: 16),
+
+        // Debug Section
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Debug Info', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Notification Access: ${_notifEnabled ? "✅ Enabled" : "❌ Disabled"}'),
+              Text('Accessibility Access: ${_accEnabled ? "✅ Enabled" : "❌ Disabled"}'),
+              Text('Live Events Count: ${_liveEvents.length}'),
+              Text('Event Stream Active: ${_eventsSub != null ? "✅ Yes" : "❌ No"}'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: () async {
+                      final status = await NotificationForwarderService.getCaptureStatus();
+                      print('=== DEBUG: Capture Status ===');
+                      print('Status: $status');
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Status: ${status.toString()}')),
+                      );
+                    },
+                    child: const Text('Check Status'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      NotificationForwarderService.openNotificationSettings();
+                    },
+                    child: const Text('Open Settings'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final success = await NotificationForwarderService.sendTestNotification();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(success ? 'Test notification sent!' : 'Failed to send test notification')),
+                      );
+                    },
+                    child: const Text('Test Notification'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: 16),
 
         // Live Notifications (from native pipeline)

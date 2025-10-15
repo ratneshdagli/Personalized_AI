@@ -186,9 +186,10 @@ class _FeedCardState extends State<FeedCard> with SingleTickerProviderStateMixin
                     ),
                     Padding(
                       padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                           // Header with source and time
                           Row(
                             children: [
@@ -321,6 +322,7 @@ class _FeedCardState extends State<FeedCard> with SingleTickerProviderStateMixin
                               ],
                             ),
                         ],
+                        ),
                       ),
                     ),
                   ],
