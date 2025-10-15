@@ -78,6 +78,16 @@ class _SettingsCaptureScreenState extends State<SettingsCaptureScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Card(
+            child: ListTile(
+              title: const Text('Notification access'),
+              subtitle: Text(_serverForwarding ? 'Enabled for capture' : 'Disabled'),
+              trailing: FilledButton(
+                onPressed: () => NotificationForwarderService.openNotificationSettings(),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+          Card(
             child: SwitchListTile(
               title: const Text('Forward to Server'),
               subtitle: const Text('Send WhatsApp messages and other context events to backend for personalization'),

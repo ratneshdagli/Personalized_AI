@@ -20,8 +20,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _textController = TextEditingController();
-  final List<Map<String, dynamic>> _liveEvents = [];
-  StreamSubscription<Map<String, dynamic>>? _eventsSub;
+  // Live events are rendered via StreamBuilder; no manual subscription needed
   bool _notifEnabled = false;
   bool _accEnabled = false;
 
@@ -34,18 +33,13 @@ class _HomeScreenState extends State<HomeScreen> {
       Provider.of<FeedProvider>(context, listen: false).loadFeed();
     });
 
-    // Subscribe to native context events (notifications/accessibility)
-    _eventsSub = NotificationForwarderService.contextEvents.listen((event) {
-      print('=== FLUTTER: Received live context event ===');
-      print('Event data: $event');
-      setState(() {
-        _liveEvents.insert(0, event);
-        if (_liveEvents.length > 20) _liveEvents.removeLast();
-      });
-      print('Live events count: ${_liveEvents.length}');
-    }, onError: (error) {
-      print('=== FLUTTER: Error in event stream ===');
-      print('Error: $error');
+    // Promote live notifications into Recent Feed so they appear like demo items
+    NotificationForwarderService.contextEvents.listen((event) {
+      if (!mounted) return;
+      try {
+        final fp = Provider.of<FeedProvider>(context, listen: false);
+        fp.addLiveEventMapToFeed(event);
+      } catch (_) {}
     });
 
     // Check permissions status and prompt if needed
@@ -55,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _textController.dispose();
-    _eventsSub?.cancel();
+    // No subscriptions to cancel
     super.dispose();
   }
 
@@ -213,170 +207,31 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    if (feedProvider.feed.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.inbox_outlined,
-                size: 80,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              "All caught up!",
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Pull down to refresh your feed.",
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pushNamed(context, '/login'),
-              icon: const Icon(Icons.settings),
-              label: const Text('Setup Connectors'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-      children: [
-        // Hero Header
-        _HeroHeader().animate().fadeIn(duration: 400.ms).moveY(begin: 12, end: 0, curve: Curves.easeOut),
-        const SizedBox(height: 16),
-
-        // Quick Actions
-        _QuickActions(onExtract: _showTaskExtractionDialog).animate().fadeIn(duration: 450.ms).moveY(begin: 12, end: 0),
-        const SizedBox(height: 16),
-
-        // Highlights Grid
-        _HighlightsGrid(feedProvider: feedProvider).animate().fadeIn(duration: 500.ms).moveY(begin: 12, end: 0),
-        const SizedBox(height: 16),
-
-        // Debug Section
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue.withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Debug Info', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text('Notification Access: ${_notifEnabled ? "✅ Enabled" : "❌ Disabled"}'),
-              Text('Accessibility Access: ${_accEnabled ? "✅ Enabled" : "❌ Disabled"}'),
-              Text('Live Events Count: ${_liveEvents.length}'),
-              Text('Event Stream Active: ${_eventsSub != null ? "✅ Yes" : "❌ No"}'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  ElevatedButton(
-                    onPressed: () async {
-                      final status = await NotificationForwarderService.getCaptureStatus();
-                      print('=== DEBUG: Capture Status ===');
-                      print('Status: $status');
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Status: ${status.toString()}')),
-                      );
-                    },
-                    child: const Text('Check Status'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      NotificationForwarderService.openNotificationSettings();
-                    },
-                    child: const Text('Open Settings'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final success = await NotificationForwarderService.sendTestNotification();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(success ? 'Test notification sent!' : 'Failed to send test notification')),
-                      );
-                    },
-                    child: const Text('Test Notification'),
-                  ),
+    final items = feedProvider.feed;
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return FeedCard(
+          feedItem: item,
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: Text(item.title),
+                content: SingleChildScrollView(child: Text(item.content.isNotEmpty ? item.content : item.summary)),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Live Notifications (from native pipeline)
-        Text('Live Notifications', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        Container(
-          constraints: const BoxConstraints(minHeight: 120, maxHeight: 260),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.06),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: _liveEvents.isEmpty
-              ? const Center(child: Text('No live events yet. Send a notification to see it here.'))
-              : ListView.builder(
-                  itemCount: _liveEvents.length,
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  itemBuilder: (context, index) {
-                    final e = _liveEvents[index];
-                    final pkg = (e['package'] ?? '').toString();
-                    final title = (e['title'] ?? '').toString();
-                    final text = (e['text'] ?? (e['text_nodes']?.join(' ') ?? '')).toString();
-                    final ts = DateTime.tryParse('${e['timestamp']}') ?? DateTime.now();
-                    return ListTile(
-                      leading: const Icon(PhosphorIconsBold.bellSimple),
-                      title: Text(title.isNotEmpty ? title : pkg),
-                      subtitle: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      trailing: Text('${ts.hour.toString().padLeft(2,'0')}:${ts.minute.toString().padLeft(2,'0')}'),
-                    );
-                  },
-                ),
-        ),
-        const SizedBox(height: 16),
-
-        // Recent Feed section
-        Text('Recent Feed', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ...feedProvider.feed.take(5).toList().asMap().entries.map((entry) {
-          final i = entry.key;
-          final item = entry.value;
-          return FeedCard(
-            feedItem: item,
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Tapped: ${item.title}')),
-              );
-            },
-            showPriority: true,
-            showRelevance: true,
-          ).animate().fadeIn(delay: (100 * i).ms, duration: 350.ms).slideY(begin: 0.1, end: 0, curve: Curves.easeOut);
-        }),
-      ],
+            );
+          },
+          showPriority: false,
+          showRelevance: false,
+        ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.06, end: 0, curve: Curves.easeOut);
+      },
     );
   }
 

@@ -30,11 +30,15 @@ async def get_feed():
             # Convert priority enum to int
             priority_value = item.priority.value if hasattr(item.priority, 'value') else int(item.priority)
             
+            # Ensure full_text is always present
+            full_text_value = item.text or item.summary or item.title or ""
+
             feed_item = FeedItem(
                 id=str(item.id),
                 title=item.title,
                 summary=item.summary or "",
                 content=item.text or item.summary or "",
+                full_text=full_text_value,
                 date=item.date,
                 source=item.source.value if hasattr(item.source, 'value') else str(item.source),
                 priority=priority_value,

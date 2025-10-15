@@ -317,11 +317,13 @@ Conversation:
                 cleaned_content, {sender}, tasks
             )
             
-            # Create FeedItem
+            # Create FeedItem (ensure full_text is populated)
+            full_text_value = cleaned_content or title or sender
             feed_item = FeedItem(
                 user_id=user_id,
                 title=f"WhatsApp: {sender}",
                 content=cleaned_content,
+                full_text=full_text_value,
                 summary=summary,
                 source="whatsapp_notification",
                 origin_id=f"whatsapp_notif_{sender}_{parsed_time.timestamp()}",

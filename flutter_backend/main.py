@@ -15,6 +15,7 @@ from routes.jobs import router as jobs_router
 from routes.instagram import router as instagram_router
 from routes.telegram import router as telegram_router
 from routes.calendar import router as calendar_router
+from routes.debug import router as debug_router
 from storage.db import init_db
 from dotenv import load_dotenv
 import os
@@ -57,6 +58,7 @@ app.include_router(jobs_router, prefix="/api")
 app.include_router(instagram_router, prefix="/api")
 app.include_router(telegram_router, prefix="/api")
 app.include_router(calendar_router, prefix="/api")
+app.include_router(debug_router)
 
 # CORS (dev-friendly defaults; restrict in production)
 allowed_origins = [

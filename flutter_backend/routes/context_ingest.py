@@ -11,11 +11,14 @@ class ContextEvent(BaseModel):
     package: str = Field(...)
     title: Optional[str] = None
     text: Optional[str] = None
-    timestamp: Optional[str] = None
+    timestamp: Optional[int] = None  # accept epoch ms from mobile
     source: str = Field(..., pattern=r"^(notification|accessibility)$")
     meta: Dict[str, Any] = Field(default_factory=dict)
     user_opt_in_raw: Optional[bool] = False
     local_only: Optional[bool] = None  # client can override; otherwise use server policy
+    # Optional fields commonly sent by mobile
+    sender: Optional[str] = None
+    event_id: Optional[str] = None
 
 
 @router.post("/ingest/context_event")

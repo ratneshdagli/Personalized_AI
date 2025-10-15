@@ -29,11 +29,15 @@ async def get_live_news() -> List[FeedItem]:
             feed_items = []
             for article in articles:
                 if article.get("title") and article.get("description"):
+                    content_value = article.get("content") or article["description"]
+                    full_text_value = content_value or article["title"]
                     feed_items.append(
                         FeedItem(
                             id=str(uuid4()),
                             title=article["title"],
                             summary=article["description"],
+                            content=content_value,
+                            full_text=full_text_value,
                             date=datetime.fromisoformat(article["publishedAt"].replace("Z", "+00:00")),
                             source="News",
                             priority=3  # Default priority, will be re-ranked later

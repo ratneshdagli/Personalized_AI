@@ -28,8 +28,8 @@ import java.util.concurrent.TimeUnit
  */
 class NotificationCaptureService : NotificationListenerService() {
 
-    private val cacheTtlMs: Long = TimeUnit.MINUTES.toMillis(2)
-    private val cacheSize = 256
+    private val cacheTtlMs: Long = TimeUnit.SECONDS.toMillis(5)
+    private val cacheSize = 512
     private val recentEvents: LruCache<String, Long> = object : LruCache<String, Long>(cacheSize) {}
 
     private val okHttpClient: OkHttpClient by lazy {
@@ -86,7 +86,10 @@ class NotificationCaptureService : NotificationListenerService() {
 
         Log.d(TAG, "Extracted notification - Title: '$title', Text: '$text', Timestamp: $timestamp")
 
-        val key = "$pkg#$notificationId#${timestamp}"
+        // Build dedupe signature using package + sender + text to avoid spam
+        val sender = if (title.isNotEmpty()) title else "Unknown"
+        val signature = "$pkg|$sender|$text".take(512)
+        val key = signature
         val now = System.currentTimeMillis()
         val lastSeen = recentEvents.get(key)
         if (lastSeen != null && now - lastSeen < cacheTtlMs) {
@@ -110,20 +113,20 @@ class NotificationCaptureService : NotificationListenerService() {
 
         // ALWAYS broadcast ALL notifications to Flutter UI (including WhatsApp)
         val event = JSONObject().apply {
+            put("source", "notification")
             put("package", pkg)
-            put("title", title)
+            put("sender", sender)
             put("text", text)
             put("timestamp", timestamp)
-            put("notificationId", notificationId)
-            put("source", "notification")
-            put("meta", JSONObject())
+            put("event_id", java.util.UUID.randomUUID().toString())
         }
 
         Log.d(TAG, "Constructed JSON payload: ${event.toString()}")
 
         // Emit locally for Flutter - THIS IS CRITICAL FOR LIVE NOTIFICATIONS
         try {
-            Log.d(TAG, "Broadcasting notification to Flutter UI...")
+            val eventJson = event.toString()
+            Log.d("NCS", "Broadcasting event: $eventJson")
             sendLocalBroadcast(this, event)
             Log.d(TAG, "Notification broadcast sent successfully")
         } catch (e: Exception) {
@@ -142,6 +145,8 @@ class NotificationCaptureService : NotificationListenerService() {
     private fun sendLocalBroadcast(context: Context, event: JSONObject) {
         val intent = Intent(ACTION_CONTEXT_EVENT)
         intent.putExtra(EXTRA_EVENT_JSON, event.toString())
+        // Explicitly target our own app package to ensure delivery on newer Android versions
+        intent.setPackage(context.packageName)
         Log.d(TAG, "Sending broadcast with action: $ACTION_CONTEXT_EVENT")
         Log.d(TAG, "Broadcast data: ${event.toString()}")
         context.sendBroadcast(intent)
@@ -211,8 +216,8 @@ class NotificationCaptureService : NotificationListenerService() {
 
     private fun shouldForwardToServer(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        // **FIX**: Changed default value from 'ture' (typo) to 'true'
-        return prefs.getBoolean(KEY_SERVER_FORWARDING_ENABLED, true)
+        // Default to local-only (no forwarding) unless user enables
+        return prefs.getBoolean(KEY_SERVER_FORWARDING_ENABLED, false)
     }
 
     private fun initializeDefaultPreferences() {
@@ -221,8 +226,8 @@ class NotificationCaptureService : NotificationListenerService() {
         
         // Set defaults if not already set
         if (!prefs.contains(KEY_SERVER_FORWARDING_ENABLED)) {
-            editor.putBoolean(KEY_SERVER_FORWARDING_ENABLED, true)
-            Log.d(TAG, "Initialized server forwarding to true")
+            editor.putBoolean(KEY_SERVER_FORWARDING_ENABLED, false)
+            Log.d(TAG, "Initialized server forwarding to false (local-only)")
         }
         
         if (!prefs.contains(KEY_BACKEND_URL)) {

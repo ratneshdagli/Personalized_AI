@@ -25,9 +25,9 @@ class MainActivity : FlutterActivity() {
             android.util.Log.d("MainActivity", "Received broadcast with action: $action")
             if (action == com.yourorg.personalizedai.NotificationCaptureService.ACTION_CONTEXT_EVENT) {
                 val json = intent.getStringExtra(com.yourorg.personalizedai.NotificationCaptureService.EXTRA_EVENT_JSON)
-                android.util.Log.d("MainActivity", "Received notification event: $json")
+                android.util.Log.d("MainActivity", "Received event for Flutter: $json")
                 json?.let { 
-                    android.util.Log.d("MainActivity", "Forwarding to Flutter: $it")
+                    android.util.Log.d("MainActivity", "Forwarding to Flutter via EventChannel")
                     eventsSink?.success(it)
                     android.util.Log.d("MainActivity", "Successfully forwarded to Flutter")
                 }
@@ -151,6 +151,8 @@ class MainActivity : FlutterActivity() {
         if (!receiverRegistered) {
             android.util.Log.d("MainActivity", "Registering broadcast receiver")
             val filter = IntentFilter(com.yourorg.personalizedai.NotificationCaptureService.ACTION_CONTEXT_EVENT)
+            // Restrict to our package broadcasts
+            filter.addAction(com.yourorg.personalizedai.NotificationCaptureService.ACTION_CONTEXT_EVENT)
             // Add the RECEIVER_NOT_EXPORTED flag for Android 13+ (API 33+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)

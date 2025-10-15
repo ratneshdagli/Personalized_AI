@@ -64,4 +64,33 @@ class FeedProvider with ChangeNotifier {
   Future<void> refreshFeed() async {
     await loadFeed();
   }
+
+  // Optional: allow app to merge a live event into feed when user opts in
+  void addLiveEventToFeed(FeedItem item) {
+    _feed = [item, ..._feed];
+    notifyListeners();
+  }
+
+  void addLiveEventMapToFeed(Map<String, dynamic> event) {
+    final DateTime ts = DateTime.fromMillisecondsSinceEpoch(
+      int.tryParse('${event['timestamp']}') ?? DateTime.now().millisecondsSinceEpoch,
+      isUtc: false,
+    );
+    final item = FeedItem(
+      id: 'live-${event['event_id'] ?? ts.microsecondsSinceEpoch}',
+      title: (event['sender'] ?? event['package'] ?? 'Notification').toString(),
+      summary: (event['text'] ?? '').toString(),
+      content: (event['text'] ?? '').toString(),
+      date: ts,
+      source: (event['package'] ?? 'notification').toString(),
+      priority: 1,
+      relevance: 0.0,
+      metaData: {
+        'source': event['source'],
+        'event_id': event['event_id'],
+        'package': event['package'],
+      },
+    );
+    addLiveEventToFeed(item);
+  }
 }
