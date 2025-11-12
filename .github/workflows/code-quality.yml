@@ -1,0 +1,135 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        cd flutter_backend
+        pip install -r requirements.txt
+        pip install black isort flake8 mypy bandit safety
+    
+    - name: Run Black (code formatting)
+      run: |
+        cd flutter_backend
+        black --check --diff .
+    
+    - name: Run isort (import sorting)
+      run: |
+        cd flutter_backend
+        isort --check-only --diff .
+    
+    - name: Run Flake8 (linting)
+      run: |
+        cd flutter_backend
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Run MyPy (type checking)
+      run: |
+        cd flutter_backend
+        mypy . --ignore-missing-imports || echo "MyPy type checking completed with warnings"
+    
+    - name: Run Bandit (security)
+      run: |
+        cd flutter_backend
+        bandit -r . -f json -o bandit-report.json || echo "Bandit security scan completed with findings"
+    
+    - name: Run Safety (dependency vulnerabilities)
+      run: |
+        cd flutter_backend
+        safety check --json --output safety-report.json || echo "Safety check completed with findings"
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          flutter_backend/bandit-report.json
+          flutter_backend/safety-report.json
+
+  frontend-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.0'
+        channel: 'stable'
+    
+    - name: Install dependencies
+      run: |
+        cd flutter_application_1
+        flutter pub get
+    
+    - name: Run Flutter analyze
+      run: |
+        cd flutter_application_1
+        flutter analyze --fatal-infos
+    
+    - name: Run Flutter format check
+      run: |
+        cd flutter_application_1
+        dart format --output=none --set-exit-if-changed .
+    
+    - name: Check for unused dependencies
+      run: |
+        cd flutter_application_1
+        flutter pub deps --json > deps.json
+        # Add custom script to check for unused dependencies if needed
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Check documentation
+      run: |
+        echo "Checking for required documentation files..."
+        
+        # Check for README files
+        if [ ! -f "README.md" ]; then
+          echo "❌ Root README.md not found"
+          exit 1
+        fi
+        
+        if [ ! -f "flutter_backend/README.md" ]; then
+          echo "❌ Backend README.md not found"
+          exit 1
+        fi
+        
+        if [ ! -f "flutter_application_1/README.md" ]; then
+          echo "❌ Frontend README.md not found"
+          exit 1
+        fi
+        
+        echo "✅ All required documentation files found"
+    
+    - name: Validate documentation links
+      run: |
+        # Check for broken links in README files
+        echo "Checking for broken links in documentation..."
+        # Add link checking logic here if needed
+

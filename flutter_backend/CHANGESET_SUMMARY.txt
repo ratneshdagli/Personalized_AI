@@ -1,0 +1,37 @@
+Planned NoSQL migration (in-progress; no commits made)
+
+Changed/Added:
+- app/core/nosql.py: TinyDB-backed document store (users, feed_items, tasks, connectors, vector_meta)
+- app/routes/sync_routes.py: /api/sync/upload and /api/sync/download endpoints for Hive-first sync
+- app/routes/ingest_routes.py: also inserts analyzed notification into feed_items (NoSQL)
+- app/main.py: registers /api/sync routes
+- requirements.txt: add tinydb
+- app/core/validation_logging.py: global RequestValidationError handler writing to logs/validation.log
+- tests/test_ingest.py, tests/test_sync.py, tests/test_embeddings.py: pytest coverage; BACKEND_STORAGE=memory
+- tests/smoke.py: simple script to exercise health/ingest/sync
+- app/services/llm_service.py: embedding pipeline → saves vectors/<document_id>.npy and vector_meta upsert, logs embedding events
+
+To be archived (next step):
+- storage/db.py, storage/models.py and any sqlalchemy usages → legacy_sql_backup/
+
+Run locally:
+- python -m pip install -r requirements.txt
+- uvicorn app.main:app --reload --port 8000
+
+Smoke test:
+- curl http://localhost:8000/api/health
+- curl -X POST http://localhost:8000/api/ingest/context_event -H "Content-Type: application/json" -d '{"app_name":"Calendar","title":"Reminder","message":"Meet at 5","timestamp":"2025-10-16T16:00:00Z"}'
+- curl -X POST http://localhost:8000/api/sync/upload -H "Content-Type: application/json" -d '{"tasks":[{"client_id":"t1","text":"demo","verb":"do","updated_at":1730000000}]}'
+- curl "http://localhost:8000/api/sync/download?since=0"
+ - Verify embeddings: check vectors/ directory and vector_meta entries (document_id matches Hive id)
+
+Pytest (fixed email-validator dependency):
+- requirements.txt: added email-validator dependency
+- requirements-dev.txt: created with pytest for development
+- app/models/__init__.py: added import guard for better error messages
+- tests/test_ingest.py, tests/test_sync.py, tests/test_embeddings.py: now runnable with proper dependencies
+
+Notes:
+- Mobile Hive is authoritative; backend is NoSQL mirror and sync peer.
+- Vector store will store metadata in vector_meta and index files in vectors/.
+

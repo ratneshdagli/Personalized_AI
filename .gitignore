@@ -1,0 +1,112 @@
+# Flutter
+flutter_application_1/.dart_tool/
+flutter_application_1/.idea/
+flutter_application_1/build/
+flutter_application_1/.packages
+flutter_application_1/pubspec.lock
+
+# iOS / Android
+flutter_application_1/ios/Flutter/Flutter.framework
+flutter_application_1/ios/Flutter/Flutter.podspec
+flutter_application_1/ios/Pods/
+flutter_application_1/android/.gradle/
+flutter_application_1/android/app/build/
+
+# Python / FastAPI backend
+flutter_backend/venv/
+flutter_backend/__pycache__/
+flutter_backend/*.pyc
+flutter_backend/.vscode/
+flutter_backend/instance/
+flutter_backend/__pypackages__/
+flutter_backend/*.sqlite
+flutter_backend/*.log
+flutter_backend/routes/models.py
+
+# VSCode / IDE
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Edge Gallery and MediaPipe samples
+/Edge Galelry(LLM)/
+/Edge Galelry(LLM)/gallery-main/Android/
+/mediapipe-samples-main/
+
+# Python
+*.py[cod]
+*$py.class
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+ENV/
+env/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp.*
+.yarn/
+
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Local model files
+flutter_backend/models/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.swo
+.DS_Store
+
+# Local development environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# Local development environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local development environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

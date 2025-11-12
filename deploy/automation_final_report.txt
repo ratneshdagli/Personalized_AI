@@ -1,0 +1,200 @@
+# Automation Final Report - Local On-Device LLM Integration
+
+Date: 2025-11-09
+
+============================================================
+1) Changed Files (relative to repo root)
+============================================================
+
+- new_frontend/pubspec.yaml
+- new_frontend/assets/models/model_manifest.json
+- new_frontend/lib/main.dart
+- new_frontend/lib/state/app_state.dart
+- new_frontend/lib/screens/other_screens.dart
+- new_frontend/lib/screens/debug_llm_screen.dart  [NEW]
+- new_frontend/lib/llm/llm_adapter.dart          [NEW]
+- new_frontend/lib/llm/local_llm_adapter.dart    [NEW]
+- new_frontend/lib/llm/model_manager.dart        [NEW]
+- new_frontend/lib/llm/model_prompt.dart         [NEW]
+- new_frontend/lib/llm/llm_config.dart           [NEW]
+- new_frontend/lib/llm/llm_service.dart          [NEW]
+- new_frontend/test/local_llm_test.dart          [NEW]
+- tools/model_conversion/README.md               [NEW]
+
+Existing docs (unchanged but relevant):
+- flutter_backend/ml/llm_adapter.py (cloud Groq/HF adapter kept as-is for backend fallback)
+
+
+============================================================
+2) What Was Implemented
+============================================================
+
+- Local on-device LLM adapter for Flutter (CPU-only):
+  - Heuristic summarization + rule-based task/event extraction now run locally.
+  - Uses `tflite_flutter` packages (interpreter optional when .tflite present).
+  - Model download-and-cache utility with SHA256 verification and progress UI.
+  - Hidden diagnostics screen in debug builds to view model status and run a sample.
+  - Preference toggles to prefer local model and allow cloud fallback.
+
+- Frontend defaults:
+  - Local adapter is preferred; backend LLM is fallback only when allowed and needed.
+  - On first launch, a consent dialog offers to download the local model. If declined, cloud fallback is used.
+
+- Backend:
+  - No API behavior changed; all LLM endpoints remain for compatibility/fallback.
+  - WhatsApp/notification NoSQL workflows preserved.
+
+
+============================================================
+3) How To Run & Verify (Local)
+============================================================
+
+Frontend (Flutter):
+1. Install Flutter deps
+   - cd new_frontend
+   - flutter pub get
+2. Run on Android emulator (ensure backend base URL points to host, see API config)
+   - flutter run -d emulator
+3. On first run, the app will prompt to download the on-device model (if URL provided in manifest).
+4. Open Settings → (Debug builds only) "Open LLM Diagnostics" to verify:
+   - Model loaded YES/NO
+   - Model path/size
+   - SHA256 verified: true/false
+   - Last inference latency
+
+Backend (FastAPI):
+1. Start server (from flutter_backend/)
+   - uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+2. Health check
+   - curl http://localhost:8000/health
+
+
+============================================================
+4) Tests & Status
+============================================================
+
+Backend tests:
+- Command to run: (from flutter_backend/)
+  - pytest -q
+- Expected: 0 failures for WhatsApp/notification flows. (No backend changes made to those routes.)
+- Note: Not executed automatically in this environment. Run above command locally.
+
+Frontend tests:
+- Command to run: (from new_frontend/)
+  - flutter test
+- New tests added:
+  - test/local_llm_test.dart: validates local summarization and task extraction without network.
+- Note: Not executed automatically in this environment. Run above command locally.
+
+Optional E2E (manual):
+- Start backend, run app on emulator/device, pull-to-refresh Home → Recent Activity should populate.
+- "LLM Diagnostics" screen can run a sample summarization to display latency.
+
+
+============================================================
+5) Local Model Download & Integrity
+============================================================
+
+- Manifest: new_frontend/assets/models/model_manifest.json
+  - Set fields to enable secure download with SHA256 verification:
+    {
+      "default": {
+        "name": "your_model_int8.tflite",
+        "url": "https://your-host/your_model_int8.tflite",
+        "sha256": "<SHA256>",
+        "size": <BYTES>
+      }
+    }
+- On first run, user sees consent modal; upon acceptance, model is downloaded to the app-private folder and verified.
+- Cached metadata is stored in SharedPreferences.
+
+
+============================================================
+6) Enable/Disable Fallback to Cloud LLM
+============================================================
+
+- In-app (debug): Settings → LLM Diagnostics → toggles
+  - Prefer local on-device model: ON by default
+  - Allow fallback to cloud: ON by default
+
+- Programmatic (SharedPreferences keys):
+  - llm_prefer_local (bool)
+  - llm_fallback_cloud (bool)
+
+
+============================================================
+7) Inference Latency (Sample)
+============================================================
+
+- Emulator: Use "Run sample summarization" on Diagnostics screen to record displayed latency.
+- Real device: Same; values will differ based on CPU and thermal state.
+- This automation could not run devices in this environment; please record:
+  - Pixel emulator (x86_64): <fill after running> ms
+  - Real Android device (CPU-only): <fill after running> ms
+
+
+============================================================
+8) Model Conversion (if needed)
+============================================================
+
+- See: tools/model_conversion/README.md for guidance and example commands (PyTorch → ONNX → TFLite; optional INT8 quantization).
+- Place the final .tflite in a secure host or bundle as an asset.
+- Update manifest with URL, size, and SHA256.
+
+
+============================================================
+9) Acceptance Criteria Mapping
+============================================================
+
+- Backend pytest passes: expected (no WhatsApp/notification changes). Run `pytest -q` under flutter_backend/.
+- Frontend loads and uses local adapter by default: implemented via `LlmService` and `local_llm_adapter.dart`.
+- Local adapter returns summaries without calling backend: yes; heuristic summarizer used even without model.
+- Fallback to backend LLM works: when local fails and fallback is enabled, `/api/extract_tasks` is used.
+- Diagnostic screen present in debug builds: `lib/screens/debug_llm_screen.dart`.
+- Model download consent + cache + SHA256: implemented (`model_prompt.dart`, `model_manager.dart`).
+
+
+============================================================
+10) Known Issues / Next Steps
+============================================================
+
+- The Edge Gallery repo includes MediaPipe `.task` formats; current Flutter integration uses TFLite for portability.
+  - If you decide to use MediaPipe LLM Inference API, custom Android (Kotlin) and platform channels are required.
+- The local adapter currently uses heuristic logic until a proper mobile model `.tflite` is provided in the manifest.
+  - After providing a working `.tflite`, update the adapter to run inference with `tflite_flutter` and map outputs.
+- iOS Pod setup not tested; ensure `tflite_flutter` builds successfully (may require minimum iOS version + CocoaPods update).
+- No CI changes pushed; run tests locally or wire into your CI pipeline.
+
+
+============================================================
+11) Exact Commands (Run Locally)
+============================================================
+
+# Backend
+cd flutter_backend
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+pytest -q
+
+# Frontend
+cd new_frontend
+flutter pub get
+flutter test
+flutter run -d emulator  # or a real device
+
+# Optional: Model conversion (example scaffold)
+# See tools/model_conversion/README.md for details and commands
+
+
+============================================================
+12) Verification Checklist
+============================================================
+
+- [ ] Launch app on emulator, accept model download, verify SHA256
+- [ ] Open Settings → LLM Diagnostics → Status shows model details
+- [ ] Run sample summarization → latency displayed; confirm no errors
+- [ ] Create/complete todos & events → backend sync remains functional
+- [ ] WhatsApp ingestion still populates Recent Activity from backend
+- [ ] Toggle fallback to cloud and verify extraction through backend
+
+
+End of Report.

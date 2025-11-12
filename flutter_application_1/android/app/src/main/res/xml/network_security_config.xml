@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- DEVELOPMENT CONFIGURATION - Allows HTTP for local backend -->
+    <!-- For production: Replace with network_security_config_production.xml -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.29.143</domain>
+    </domain-config>
+</network-security-config>

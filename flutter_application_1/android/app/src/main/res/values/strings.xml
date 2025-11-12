@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Personalized AI processes on-screen text to generate personalized suggestions. This is strictly opt-in and rate-limited.</string>
+</resources>
+
+
