@@ -6,3 +6,4 @@ python-dotenv
 tinydb
 numpy
 email-validator
+huggingface_hub

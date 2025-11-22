@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import '../services/huggingface_model_download_service.dart';
+import '../state/app_state.dart';
 import 'glass_card.dart';
 import 'model_chat_interface.dart';
 
+// The parent widget remains StatelessWidget.
+// It's only responsible for creating the provider.
 class HFModelManagerCard extends StatelessWidget {
   const HFModelManagerCard({super.key});
 
@@ -13,15 +16,26 @@ class HFModelManagerCard extends StatelessWidget {
     return ChangeNotifierProvider<HuggingFaceModelDownloadService>(
       create: (context) {
         final service = HuggingFaceModelDownloadService();
-        // Use a post-frame callback to avoid doing work during build
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Only check installed model if we don't have any state yet
-          if (service.state.status == HFModelDownloadStatus.notInstalled) {
-            service.checkInstalledModel();
-          }
-          // Load available models in the background
-          service.loadAvailableModels();
-        });
+        
+        // Try to initialize with ModelRepository if AppState is ready
+        try {
+          final appState = Provider.of<AppState>(context, listen: false);
+          service.init(appState.modelRepository);
+          
+          // Use a post-frame callback to avoid doing work during build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            // Only check installed model if we don't have any state yet
+            if (service.state.status == HFModelDownloadStatus.notInstalled) {
+              service.checkInstalledModel();
+            }
+            // Load available models in the background
+            service.loadAvailableModels();
+          });
+        } catch (e) {
+          debugPrint('[HFModelManagerCard] AppState not ready yet: $e');
+          // Service will work in limited mode without database
+        }
+        
         return service;
       },
       child: const _HFModelManagerCardContent(),
@@ -29,178 +43,257 @@ class HFModelManagerCard extends StatelessWidget {
   }
 }
 
-class _HFModelManagerCardContent extends StatelessWidget {
+//
+// --- This is the widget we are converting to a StatefulWidget ---
+//
+class _HFModelManagerCardContent extends StatefulWidget {
   const _HFModelManagerCardContent();
+
+  @override
+  State<_HFModelManagerCardContent> createState() =>
+      _HFModelManagerCardContentState();
+}
+
+class _HFModelManagerCardContentState extends State<_HFModelManagerCardContent> {
+  // 1. Add _isExpanded to the State
+  bool _isExpanded = true;
 
   @override
   Widget build(BuildContext context) {
     final service = context.watch<HuggingFaceModelDownloadService>();
     final state = service.state;
-    
-    // Debug prints
-    debugPrint('[HFModelManagerCard] Current state: ${state.status}');
-    debugPrint('[HFModelManagerCard] Available models: ${service.availableModels.length}');
-    if (service.availableModels.isNotEmpty) {
-      debugPrint('[HFModelManagerCard] First model: ${service.availableModels.first.name}');
-    }
 
     return GlassCard(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF9D00), Color(0xFFFFB800)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(LucideIcons.brain, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Hugging Face Model',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _getStatusText(state.status),
-                      style: TextStyle(
-                        color: _getStatusColor(state.status),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              _buildStatusIcon(state.status),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Progress bar (downloading)
-          if (state.status == HFModelDownloadStatus.downloading)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: state.progress,
-                    backgroundColor: const Color(0xFF1E293B),
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF9D00)),
-                    minHeight: 6,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${(state.progress * 100).toStringAsFixed(0)}% • ${_formatBytes(state.bytesDownloaded)}${state.totalBytes != null ? ' / ${_formatBytes(state.totalBytes!)}' : ''}',
-                  style: const TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-            ),
-
-          // Model info (installed)
-          if (state.status == HFModelDownloadStatus.installed && state.modelInfo != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildInfoRow('Model', state.modelInfo!.name),
-                const SizedBox(height: 6),
-                _buildInfoRow('Model ID', state.modelInfo!.modelId),
-                const SizedBox(height: 6),
-                _buildInfoRow('Size', _formatBytes(state.modelInfo!.sizeInBytes)),
-                const SizedBox(height: 6),
-                if (state.sha256 != null)
-                  _buildInfoRow('SHA256', '${state.sha256!.substring(0, 12)}...'),
-                if (state.installedAt != null) ...[
-                  const SizedBox(height: 6),
-                  _buildInfoRow('Installed', _formatDate(state.installedAt!)),
-                ],
-                const SizedBox(height: 12),
-              ],
-            ),
-
-          // Always show available models list
-          if (service.availableModels.isNotEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Available Models (CPU-only):',
-                  style: TextStyle(
-                    color: Color(0xFF94A3B8),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ...service.availableModels.map((model) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildModelOption(context, service, model),
-                )),
-                const SizedBox(height: 4),
-              ],
-            ),
-
-          // Error message
-          if (state.status == HFModelDownloadStatus.failed)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // 2. Wrap the header in a GestureDetector to toggle state
+          GestureDetector(
+            onTap: () {
+              // 3. Use setState to toggle the _isExpanded variable
+              setState(() {
+                _isExpanded = !_isExpanded;
+              });
+            },
+            behavior: HitTestBehavior.opaque, // Makes the whole area tappable
+            child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0x1AEF4444),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF9D00), Color(0xFFFFB800)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0x33EF4444)),
                   ),
-                  child: Row(
+                  child: const Icon(LucideIcons.brain,
+                      color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(LucideIcons.alertCircle, color: Color(0xFFEF4444), size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          state.errorMessage ?? 'Download failed',
-                          style: const TextStyle(
-                            color: Color(0xFFEF4444),
-                            fontSize: 12,
-                          ),
+                      const Text(
+                        'Hugging Face Model',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _getStatusText(state.status),
+                        style: TextStyle(
+                          color: _getStatusColor(state.status),
+                          fontSize: 12,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                // 4. Add a rotating arrow icon
+                AnimatedRotation(
+                  turns: _isExpanded ? 0.0 : -0.5, // Rotates 180 degrees
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    LucideIcons.chevronDown,
+                    color: Color(0xFF94A3B8),
+                    size: 20,
+                  ),
+                ),
               ],
             ),
+          ),
 
-          // Action buttons
-          _buildActionButtons(context, service, state),
+          // 5. Wrap the rest of the content in AnimatedSize
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOutCubic,
+            child: Container(
+              // The 'child' of AnimatedSize must not be visible when collapsed
+              child: !_isExpanded
+                  ? const SizedBox(width: double.infinity) // Collapsed state
+                  : Column(
+                      // Expanded state
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 16),
+                        // Progress bar (downloading)
+                        if (state.status == HFModelDownloadStatus.downloading)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: state.progress,
+                                  backgroundColor: const Color(0xFF1E293B),
+                                  valueColor: const AlwaysStoppedAnimation<Color>(
+                                      Color(0xFFFF9D00)),
+                                  minHeight: 6,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                '${(state.progress * 100).toStringAsFixed(0)}% • ${_formatBytes(state.bytesDownloaded)}${state.totalBytes != null ? ' / ${_formatBytes(state.totalBytes!)}' : ''}',
+                                style: const TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 11,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+
+                        // Model info (installed)
+                        if (state.status == HFModelDownloadStatus.installed &&
+                            state.modelInfo != null)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildInfoRow('Model', state.modelInfo!.name),
+                              const SizedBox(height: 6),
+                              _buildInfoRow(
+                                  'Model ID', state.modelInfo!.modelId),
+                              const SizedBox(height: 6),
+                              _buildInfoRow('Size',
+                                  _formatBytes(state.modelInfo!.sizeInBytes)),
+                              const SizedBox(height: 6),
+                              if (state.sha256 != null)
+                                _buildInfoRow(
+                                    'SHA256', '${state.sha256!.substring(0, 12)}...'),
+                              if (state.installedAt != null) ...[
+                                const SizedBox(height: 6),
+                                _buildInfoRow(
+                                    'Installed', _formatDate(state.installedAt!)),
+                              ],
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+
+                        // Available models list or Offline message
+                        if (service.availableModels.isNotEmpty)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Available Models (CPU-only):',
+                                style: TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ...service.availableModels.map((model) => Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: 8),
+                                    child: _buildModelOption(
+                                        context, service, model),
+                                  )),
+                              const SizedBox(height: 4),
+                            ],
+                          )
+                        else if (state.status != HFModelDownloadStatus.downloading && 
+                                 state.status != HFModelDownloadStatus.preparing)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0x1A64748B),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0x3364748B)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(LucideIcons.wifiOff, color: Color(0xFF94A3B8), size: 16),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Cannot load models. Please check your connection.',
+                                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Error message
+                        if (state.status == HFModelDownloadStatus.failed)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0x1AEF4444),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: const Color(0x33EF4444)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(LucideIcons.alertCircle,
+                                        color: Color(0xFFEF4444), size: 16),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        state.errorMessage ??
+                                            'Download failed',
+                                        style: const TextStyle(
+                                          color: Color(0xFFEF4444),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+
+                        // Action buttons
+                        _buildActionButtons(context, service, state),
+                      ],
+                    ),
+            ),
+          ),
         ],
       ),
     );
   }
 
+  // --- All helper methods below this line are moved from the Stateless widget ---
+  // --- They do not need to be changed. ---
+
   // Helper method to check if a model is downloaded
-  Future<bool> _isModelDownloaded(HuggingFaceModelDownloadService service, HFModelInfo model) async {
+  Future<bool> _isModelDownloaded(
+      HuggingFaceModelDownloadService service, HFModelInfo model) async {
     try {
       // Check all possible model identifiers in parallel
       final results = await Future.wait([
@@ -208,7 +301,7 @@ class _HFModelManagerCardContent extends StatelessWidget {
         service.isModelDownloaded(model.fileName),
         service.isModelDownloaded(model.hfRepoId)
       ]);
-      
+
       // Return true if any of the checks returned true
       return results.any((isDownloaded) => isDownloaded == true);
     } catch (e) {
@@ -218,16 +311,17 @@ class _HFModelManagerCardContent extends StatelessWidget {
   }
 
   Future<void> _handleModelTap(
-      BuildContext context,
-      HuggingFaceModelDownloadService service,
-      HFModelInfo model) async {
-    
+    BuildContext context,
+    HuggingFaceModelDownloadService service,
+    HFModelInfo model,
+  ) async {
     // Check if this is the current model by ID, filename, or repo ID
-    final isCurrentModel = service.state.status == HFModelDownloadStatus.installed && 
-                         (service.state.modelInfo?.id == model.id ||
-                          service.state.modelInfo?.fileName == model.fileName ||
-                          service.state.modelInfo?.hfRepoId == model.hfRepoId);
-    
+    final isCurrentModel = service.state.status ==
+            HFModelDownloadStatus.installed &&
+        (service.state.modelInfo?.id == model.id ||
+            service.state.modelInfo?.fileName == model.fileName ||
+            service.state.modelInfo?.hfRepoId == model.hfRepoId);
+
     // Check if the model is downloaded
     final isDownloaded = await _isModelDownloaded(service, model);
 
@@ -237,7 +331,8 @@ class _HFModelManagerCardContent extends StatelessWidget {
         context: context,
         builder: (context) => AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: const Text('Model Details', style: TextStyle(color: Colors.white)),
+          title:
+              const Text('Model Details', style: TextStyle(color: Colors.white)),
           content: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,13 +343,14 @@ class _HFModelManagerCardContent extends StatelessWidget {
                 _buildInfoRow('Model ID', model.hfRepoId),
                 const SizedBox(height: 8),
                 _buildInfoRow('Size', _formatBytes(model.sizeInBytes)),
-                if (service.state.sha256 != null) ...[ 
+                if (service.state.sha256 != null) ...[
                   const SizedBox(height: 8),
                   _buildInfoRow('SHA256', service.state.sha256!),
                 ],
                 if (service.state.installedAt != null) ...[
                   const SizedBox(height: 8),
-                  _buildInfoRow('Installed', _formatDate(service.state.installedAt!)),
+                  _buildInfoRow(
+                      'Installed', _formatDate(service.state.installedAt!)),
                 ],
               ],
             ),
@@ -304,68 +400,135 @@ class _HFModelManagerCardContent extends StatelessWidget {
     }
   }
 
-  Widget _buildModelOption(BuildContext context, HuggingFaceModelDownloadService service, HFModelInfo model) {
+  // Helper method to determine if a model supports images
+  bool _supportsImages(HFModelInfo model) {
+    // Check if taskTypes includes 'llm_ask_image' or 'llm_vision'
+    if (model.taskTypes.contains('llm_ask_image') ||
+        model.taskTypes.contains('llm_vision')) {
+      return true;
+    }
+
+    // Check if model explicitly supports images
+    if (model.llmSupportImage) {
+      return true;
+    }
+
+    // Check for common naming patterns in model ID as a last resort
+    final modelName = model.id.toLowerCase();
+    if (modelName.contains('vision') ||
+        modelName.contains('multimodal') ||
+        modelName.contains('clip') ||
+        modelName.contains('flava') ||
+        modelName.contains('gemma-3n')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  // Helper method to build a feature indicator icon
+  Widget _buildFeatureIcon(IconData icon, String tooltip,
+      {bool available = true}) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: available ? const Color(0x1A10B981) : const Color(0x1A6B7280),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Icon(
+          icon,
+          size: 12,
+          color: available ? const Color(0xFF10B981) : const Color(0xFF6B7280),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelOption(BuildContext context,
+      HuggingFaceModelDownloadService service, HFModelInfo model) {
     // Make _isModelDownloaded and _handleModelTap available to the widget
     final isModelDownloaded = _isModelDownloaded;
     final handleModelTap = _handleModelTap;
-    // Debug information
-    debugPrint('''[HFModelManagerCard] Checking model: ${model.id}
-      Current installed model: ${service.state.modelInfo?.id}
-      Current status: ${service.state.status}
-      Model file: ${model.fileName}
-    ''');
-    
+    final supportsImages = _supportsImages(model);
+
     // Check if this is the current model by ID, filename, or repo ID
-    final isCurrentModel = service.state.status == HFModelDownloadStatus.installed && 
-                         (service.state.modelInfo?.id == model.id ||
-                          service.state.modelInfo?.fileName == model.fileName ||
-                          service.state.modelInfo?.hfRepoId == model.hfRepoId);
-    
+    final isCurrentModel = service.state.status ==
+            HFModelDownloadStatus.installed &&
+        (service.state.modelInfo?.id == model.id ||
+            service.state.modelInfo?.fileName == model.fileName ||
+            service.state.modelInfo?.hfRepoId == model.hfRepoId);
+
     // Use a FutureBuilder to handle the asynchronous isModelDownloaded check
     return FutureBuilder<bool>(
       future: isModelDownloaded(service, model),
       builder: (context, snapshot) {
         final isDownloaded = isCurrentModel || (snapshot.data ?? false);
-        
-        debugPrint('  isCurrentModel: $isCurrentModel, isDownloaded: $isDownloaded');
-    
+
         return InkWell(
           onTap: () => handleModelTap(context, service, model),
           borderRadius: BorderRadius.circular(8),
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isCurrentModel 
-                  ? const Color(0x1A10B981) 
+              color: isCurrentModel
+                  ? const Color(0x1A10B981)
                   : const Color(0x1A3B82F6),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: isCurrentModel 
-                    ? const Color(0x3310B981) 
+                color: isCurrentModel
+                    ? const Color(0x3310B981)
                     : const Color(0x333B82F6),
               ),
             ),
             child: Row(
               children: [
                 isCurrentModel
-                    ? const Icon(LucideIcons.checkCircle, color: Color(0xFF10B981), size: 16)
+                    ? const Icon(LucideIcons.checkCircle,
+                        color: Color(0xFF10B981), size: 16)
                     : isDownloaded
-                        ? const Icon(LucideIcons.check, color: Color(0xFF94A3B8), size: 16)
-                        : const Icon(LucideIcons.download, color: Color(0xFF3B82F6), size: 16),
+                        ? const Icon(LucideIcons.check,
+                            color: Color(0xFF94A3B8), size: 16)
+                        : const Icon(LucideIcons.download,
+                            color: Color(0xFF3B82F6), size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        model.displayName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              model.displayName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Text support indicator (always true for language models)
+                          _buildFeatureIcon(
+                            Icons.text_fields,
+                            'Text input',
+                            available: true,
+                          ),
+                          const SizedBox(width: 4),
+                          // Image support indicator (only show if model supports images)
+                          if (supportsImages)
+                            _buildFeatureIcon(
+                              Icons.image_outlined,
+                              'Image input',
+                              available: true,
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         '${_formatBytes(model.sizeInBytes)} • ${model.hfRepoId.split('/').last}',
                         style: const TextStyle(
@@ -377,11 +540,14 @@ class _HFModelManagerCardContent extends StatelessWidget {
                   ),
                 ),
                 if (isCurrentModel)
-                  const Icon(LucideIcons.info, color: Color(0xFF94A3B8), size: 16)
+                  const Icon(LucideIcons.info,
+                      color: Color(0xFF94A3B8), size: 16)
                 else if (isDownloaded)
-                  const Icon(LucideIcons.check, color: Color(0xFF94A3B8), size: 16)
+                  const Icon(LucideIcons.check,
+                      color: Color(0xFF94A3B8), size: 16)
                 else
-                  const Icon(LucideIcons.download, color: Color(0xFF64748B), size: 16),
+                  const Icon(LucideIcons.download,
+                      color: Color(0xFF64748B), size: 16),
               ],
             ),
           ),
@@ -416,7 +582,7 @@ class _HFModelManagerCardContent extends StatelessWidget {
 
   void _openChatInterface(BuildContext context, HFModelDownloadState state) {
     if (state.modelInfo == null) return;
-    
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => Scaffold(
@@ -424,7 +590,8 @@ class _HFModelManagerCardContent extends StatelessWidget {
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            title: const Text('Model Playground', style: TextStyle(color: Colors.white)),
+            title: const Text('Model Playground',
+                style: TextStyle(color: Colors.white)),
           ),
           body: ModelChatInterface(
             modelName: state.modelInfo!.name,
@@ -435,15 +602,18 @@ class _HFModelManagerCardContent extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, HuggingFaceModelDownloadService service, HFModelDownloadState state) {
+  Widget _buildActionButtons(BuildContext context,
+      HuggingFaceModelDownloadService service, HFModelDownloadState state) {
     switch (state.status) {
       case HFModelDownloadStatus.notInstalled:
         return ElevatedButton.icon(
-          onPressed: service.availableModels.isEmpty ? null : () {
-            if (service.availableModels.isNotEmpty) {
-              service.downloadModel(service.availableModels.first);
-            }
-          },
+          onPressed: service.availableModels.isEmpty
+              ? null
+              : () {
+                  if (service.availableModels.isNotEmpty) {
+                    service.downloadModel(service.availableModels.first);
+                  }
+                },
           icon: const Icon(LucideIcons.download, size: 16),
           label: const Text('Download Model'),
         );
@@ -452,7 +622,8 @@ class _HFModelManagerCardContent extends StatelessWidget {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 8),
-            Text('Preparing download...', style: TextStyle(color: Colors.white70)),
+            Text('Preparing download...',
+                style: TextStyle(color: Colors.white70)),
           ],
         );
       case HFModelDownloadStatus.downloading:
@@ -471,7 +642,8 @@ class _HFModelManagerCardContent extends StatelessWidget {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 8),
-            Text('Verifying model...', style: TextStyle(color: Colors.white70)),
+            Text('Verifying model...',
+                style: TextStyle(color: Colors.white70)),
           ],
         );
       case HFModelDownloadStatus.installed:
@@ -518,7 +690,8 @@ class _HFModelManagerCardContent extends StatelessWidget {
       case HFModelDownloadStatus.cancelled:
         return Column(
           children: [
-            const Text('Download cancelled', style: TextStyle(color: Colors.orange)),
+            const Text('Download cancelled',
+                style: TextStyle(color: Colors.orange)),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: () => service.downloadModel(state.modelInfo!),
@@ -530,12 +703,14 @@ class _HFModelManagerCardContent extends StatelessWidget {
     }
   }
 
-  void _showRemoveConfirmation(BuildContext context, HuggingFaceModelDownloadService service) {
+  void _showRemoveConfirmation(
+      BuildContext context, HuggingFaceModelDownloadService service) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF0F172A),
-        title: const Text('Remove Model?', style: TextStyle(color: Colors.white)),
+        title:
+            const Text('Remove Model?', style: TextStyle(color: Colors.white)),
         content: const Text(
           'This will delete the downloaded model from your device. You can download it again later.',
           style: TextStyle(color: Color(0xFF94A3B8)),
@@ -543,14 +718,16 @@ class _HFModelManagerCardContent extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
+            child:
+                const Text('Cancel', style: TextStyle(color: Color(0xFF94A3B8))),
           ),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               service.removeModel();
             },
-            child: const Text('Remove', style: TextStyle(color: Color(0xFFEF4444))),
+            child:
+                const Text('Remove', style: TextStyle(color: Color(0xFFEF4444))),
           ),
         ],
       ),
@@ -560,7 +737,8 @@ class _HFModelManagerCardContent extends StatelessWidget {
   Widget _buildStatusIcon(HFModelDownloadStatus status) {
     switch (status) {
       case HFModelDownloadStatus.installed:
-        return const Icon(LucideIcons.checkCircle, color: Color(0xFF10B981), size: 20);
+        return const Icon(LucideIcons.checkCircle,
+            color: Color(0xFF10B981), size: 20);
       case HFModelDownloadStatus.downloading:
       case HFModelDownloadStatus.preparing:
       case HFModelDownloadStatus.verifying:
@@ -573,11 +751,14 @@ class _HFModelManagerCardContent extends StatelessWidget {
           ),
         );
       case HFModelDownloadStatus.failed:
-        return const Icon(LucideIcons.alertCircle, color: Color(0xFFEF4444), size: 20);
+        return const Icon(LucideIcons.alertCircle,
+            color: Color(0xFFEF4444), size: 20);
       case HFModelDownloadStatus.cancelled:
-        return const Icon(LucideIcons.alertTriangle, color: Color(0xFFF59E0B), size: 20);
+        return const Icon(LucideIcons.alertTriangle,
+            color: Color(0xFFF59E0B), size: 20);
       default:
-        return const Icon(LucideIcons.download, color: Color(0xFF94A3B8), size: 20);
+        return const Icon(LucideIcons.download,
+            color: Color(0xFF94A3B8), size: 20);
     }
   }
 
@@ -622,14 +803,15 @@ class _HFModelManagerCardContent extends StatelessWidget {
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    
+
     if (diff.inDays == 0) return 'Today';
     if (diff.inDays == 1) return 'Yesterday';
     if (diff.inDays < 7) return '${diff.inDays} days ago';

@@ -44,11 +44,12 @@
       "sizeInBytes": 554661246,
       "estimatedPeakMemoryInBytes": 2147483648,
       "version": "20250514",
+      "llmSupportImage": false,
       "defaultConfig": {
         "topK": 64,
         "topP": 0.95,
         "temperature": 1.0,
-        "maxTokens": 1024,
+        "maxTokens": 2048,
         "accelerators": "gpu,cpu"
       },
       "taskTypes": ["llm_chat", "llm_prompt_lab"]
@@ -61,12 +62,104 @@
       "sizeInBytes": 1625493432,
       "estimatedPeakMemoryInBytes": 2684354560,
       "version": "20250514",
+      "llmSupportImage": false,
       "defaultConfig": {
         "topK": 40,
         "topP": 0.95,
         "temperature": 1.0,
         "maxTokens": 1024,
         "accelerators": "cpu"
+      },
+      "taskTypes": ["llm_chat", "llm_prompt_lab"]
+    },
+    {
+      "name": "Phi-4-mini-instruct (4-bit)",
+      "modelId": "litert-community/Phi-4-mini-instruct",
+      "modelFile": "Phi-4-mini-instruct_multi-prefill-seq_q8_ekv1280.task",
+      "description": "A 4-bit quantized variant of Microsoft's Phi-4-mini model, optimized for on-device deployment.",
+      "sizeInBytes": 3940000000,
+      "estimatedPeakMemoryInBytes": 7516192768,
+      "version": "2025-11-12",
+      "llmSupportImage": false,
+      "defaultConfig": {
+        "topK": 40,
+        "topP": 0.9,
+        "temperature": 0.8,
+        "maxTokens": 4096,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": ["llm_chat", "llm_prompt_lab"]
+    },
+    {
+      "name": "DeepSeek-R1-Distill-Qwen (4-bit)",
+      "modelId": "litert-community/DeepSeek-R1-Distill-Qwen-1.5B",
+      "modelFile": "DeepSeek-R1-Distill-Qwen-1.5B_multi-prefill-seq_q8_ekv1280.task",
+      "description": "A 4-bit quantized, distilled version of DeepSeek R1, optimized for high-performance reasoning and code generation.",
+      "sizeInBytes": 1860000000,
+      "estimatedPeakMemoryInBytes": 3221225472,
+      "version": "2025-11-12",
+      "llmSupportImage": false,
+      "defaultConfig": {
+        "topK": 40,
+        "topP": 0.9,
+        "temperature": 0.8,
+        "maxTokens": 4096,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": ["llm_chat", "llm_prompt_lab"]
+    },
+    
+    {
+      "name": "Gemma3-270M-IT (4-bit)",
+      "modelId": "litert-community/gemma-3-270m-it",
+      "modelFile": "gemma3-270m-it-q8.litertlm",
+      "description": "A 4-bit quantized 270M parameter model, ideal for fine-tuning (LoRA) for specific on-device tasks.",
+      "sizeInBytes": 322122547,
+      "estimatedPeakMemoryInBytes": 1073741824,
+      "version": "20251112",
+      "llmSupportImage": false,
+      "defaultConfig": {
+        "topK": 40,
+        "topP": 0.9,
+        "temperature": 0.8,
+        "maxTokens": 4096,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": ["llm_chat", "llm_prompt_lab"]
+    },
+    {
+      "name": "TinyLlama-1.1B-Chat (4-bit)",
+      "modelId": "litert-community/TinyLlama-1.1B-Chat-v1.0",
+      "modelFile": "TinyLlama-1.1B-Chat-v1.0_multi-prefill-seq_q8_ekv1280.task",
+      "description": "A 8-bit quantized version of TinyLlama-1.1B-Chat-v1.0, an extremely compact, English-focused chat model.",
+      "sizeInBytes": 1150000000,
+      "estimatedPeakMemoryInBytes": 2684354560,
+      "version": "20251112",
+      "llmSupportImage": false,
+      "defaultConfig": {
+        "topK": 40,
+        "topP": 0.9,
+        "temperature": 0.8,
+        "maxTokens": 2048,
+        "accelerators": "gpu,cpu"
+      },
+      "taskTypes": ["llm_chat", "llm_prompt_lab"]
+    },
+    {
+      "name": "Llama-3.2-1B-instruct (4-bit)",
+      "modelId": "litert-community/Llama-3.2-1B-instruct",
+      "modelFile": "Llama-3.2-1B-instruct-q4-f16.task",
+      "description": "A 4-bit quantized version of Meta's Llama 3.2 1B instruct model, optimized for on-device performance.",
+      "sizeInBytes": 1181116006,
+      "estimatedPeakMemoryInBytes": 2362232012,
+      "version": "20251112",
+      "llmSupportImage": false,
+      "defaultConfig": {
+        "topK": 40,
+        "topP": 0.9,
+        "temperature": 0.8,
+        "maxTokens": 4096,
+        "accelerators": "gpu,cpu"
       },
       "taskTypes": ["llm_chat", "llm_prompt_lab"]
     }

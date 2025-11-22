@@ -9,7 +9,7 @@ class AppColors {
   static const Color darkCard = Color(0xFF0F172A); // slate-900
   static const Color darkCardForeground = Color(0xFFE5E7EB); // slate-200
   static const Color darkMuted = Color(0xFF1F2937); // slate-800 equivalent
-  static const Color darkPrimary = Color(0xFFA855F7); // purple-500
+  static const Color darkPrimary = Color(0xFF3B82F6); // blue-500
   static const Color darkPrimaryForeground = Color(0xFF1F2937); // slate-800
   static const Color darkSecondary = Color(0xFFEC4899); // pink-500
   static const Color darkSecondaryForeground = Color(0xFF1F2937);
@@ -17,11 +17,11 @@ class AppColors {
   static const Color darkDestructive = Color(0xFFEF4444); // red-500
   static const Color darkBorder = Color(0x1AFFFFFF); // white/10
   static const Color darkInput = Color(0x99334155); // slate-700 with opacity
-  static const Color darkRing = Color(0x66A855F7); // purple-500/40
+  static const Color darkRing = Color(0x663B82F6); // blue-500/40
 
   // Dark charts (semantic equivalents of --chart-* in CSS)
-  static const Color darkChart1Start = Color(0xFFA855F7); // purple-500
-  static const Color darkChart1End = Color(0xFF7C3AED);   // purple-600/700
+  static const Color darkChart1Start = Color(0xFF3B82F6); // blue-500
+  static const Color darkChart1End = Color(0xFF2563EB);   // blue-600/700
   static const Color darkChart2Start = Color(0xFF3B82F6); // blue-500
   static const Color darkChart2End = Color(0xFF2563EB);   // blue-600
   static const Color darkChart3Start = Color(0xFFF59E0B); // amber-500
@@ -44,7 +44,7 @@ class AppColors {
   static const Color lightCard = Color(0xFFF8FAFC); // slate-50/100
   static const Color lightCardForeground = Color(0xFF111827);
   static const Color lightMuted = Color(0xFFF1F5F9); // slate-100
-  static const Color lightPrimary = Color(0xFF111827); // dark text
+  static const Color lightPrimary = Color(0xFF3B82F6); // blue-500
   static const Color lightPrimaryForeground = Color(0xFFFFFFFF);
   static const Color lightSecondary = Color(0xFF334155); // slate-700
   static const Color lightSecondaryForeground = Color(0xFFFFFFFF);

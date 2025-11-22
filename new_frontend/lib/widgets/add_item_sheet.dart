@@ -75,9 +75,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
               children: [
                 for (final h in hubs)
                   ChoiceChip(
-                    label: Text(h),
-                    selected: hub == h,
-                    onSelected: (_) => setState(() => hub = h),
+                    label: Text(h.name),
+                    selected: hub == h.name,
+                    onSelected: (_) => setState(() => hub = h.name),
                     selectedColor: const Color(0x33A855F7),
                     backgroundColor: const Color(0x1AFFFFFF),
                     labelStyle: TextStyle(color: hub == h ? Colors.white : AppColors.slate300),
@@ -163,7 +163,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           );
                     } else {
                       context.read<AppState>().addTodo(
-                            TodoItem(
+                            TodoItemVM(
                               id: id,
                               title: title.trim(),
                               desc: description.isEmpty ? null : description,

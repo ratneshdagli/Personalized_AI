@@ -52,11 +52,7 @@ class ApiService {
         List<dynamic> data = json.decode(response.body);
         print('Successfully fetched ${data.length} feed items');
 
-        // Log WhatsApp items specifically
-        final whatsappItems = data.where((item) =>
-            item['source'] == 'whatsapp' ||
-            item['source'] == 'whatsapp_notification').toList();
-        print('Found ${whatsappItems.length} WhatsApp items in response');
+
 
         return data.map((item) => BackendFeedItem.fromJson(item)).toList();
       } else {
@@ -136,23 +132,6 @@ class ApiService {
     }
   }
 
-  /// Post WhatsApp message data to the backend
-  Future<bool> postWhatsAppMessage(Map<String, dynamic> messageData) async {
-    try {
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/whatsapp/add'),
-            headers: ApiConfig.defaultHeaders,
-            body: json.encode(messageData),
-          )
-          .timeout(ApiConfig.timeout);
-
-      return response.statusCode == 200 || response.statusCode == 202;
-    } catch (e) {
-      print('Error posting WhatsApp message: $e');
-      return false;
-    }
-  }
 
   /// Search across feed items
   Future<List<BackendFeedItem>> searchFeed(String query) async {
@@ -224,7 +203,7 @@ class ApiService {
         throw Exception('Failed to fetch todos: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error fetching todos: $e');
+      // Silently fail - we're in offline-first mode
       return [];
     }
   }

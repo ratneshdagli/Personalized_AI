@@ -28,41 +28,43 @@ class EventChip extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: Ink(
-          padding: const EdgeInsets.all(10), // p-2.5 ~ 10px
-          decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient),
-            borderRadius: BorderRadius.circular(12), // rounded-xl
-            boxShadow: [
-              BoxShadow(color: gradient.last.withOpacity(0.25), blurRadius: 14, spreadRadius: 1),
-            ],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: Icon(icon, color: Colors.white, size: 16),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // FIX: overflow resolved - clamp title to single line
-                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 2),
-                    Text(time, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.slate200, fontSize: 12)),
-                    if (location != null) ...[
-                      const SizedBox(height: 2),
-                      Text(location!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.slate200, fontSize: 11)),
-                    ],
-                  ],
+        child: RepaintBoundary(
+          child: Ink(
+            padding: const EdgeInsets.all(10), // p-2.5 ~ 10px
+            decoration: BoxDecoration(
+              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: gradient),
+              borderRadius: BorderRadius.circular(12), // rounded-xl
+              boxShadow: [
+                BoxShadow(color: gradient.last.withOpacity(0.25), blurRadius: 14, spreadRadius: 1),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                  child: Icon(icon, color: Colors.white, size: 16),
                 ),
-              ),
-            ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // FIX: overflow resolved - clamp title to single line
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      Text(time, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.slate200, fontSize: 12)),
+                      if (location != null) ...[
+                        const SizedBox(height: 2),
+                        Text(location!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppColors.slate200, fontSize: 11)),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

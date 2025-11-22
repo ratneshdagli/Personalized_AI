@@ -37,7 +37,7 @@ class FilterSheet extends StatelessWidget {
               spacing: 6,
               runSpacing: 6,
               children: [
-                for (final h in ['All', ...state.hubs])
+                for (final h in ['All', ...state.hubs.map((h) => h.name)])
                   ChoiceChip(
                     label: Text(h),
                     labelStyle: TextStyle(color: localHub == h ? Colors.white : AppColors.slate300),

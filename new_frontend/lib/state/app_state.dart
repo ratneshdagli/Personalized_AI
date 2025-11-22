@@ -1,16 +1,41 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_service.dart';
-import '../models/feed_item.dart' as backend;
+import 'package:isar/isar.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../services/api_service.dart'; // Keep for now, but will be deprecated
+import '../services/feed_service.dart';
+import '../services/task_extractor.dart';
+import '../services/ranking_service.dart';
+import '../services/local_llm_service.dart';
+import '../services/notification_dispatcher.dart';
+import '../services/search_service.dart';
+
+import '../data/repositories/feed_repository.dart';
+import '../data/repositories/task_repository.dart';
+import '../data/repositories/model_repository.dart';
+import '../data/repositories/calendar_event_repository.dart';
+import '../data/repositories/hub_repository.dart';
+import '../data/repositories/user_feedback_repository.dart';
+
+import '../data/schema/feed_item.dart' as schema;
+import '../data/schema/task.dart' as schema;
+import '../data/schema/model_record.dart' as schema;
+import '../data/schema/calendar_event.dart' as schema;
+import '../data/schema/hub.dart' as schema;
+import '../data/schema/user_feedback.dart' as schema;
+
 import '../models/task.dart' as backend;
-import '../llm/llm_service.dart';
+
+import '../llm/llm_service.dart'; // Old LLM service, might need to check usage
 
 // Lightweight in-memory UI state (Provider/ChangeNotifier)
 // Data models (visual-only)
-enum FeedType { email, message, news, whatsapp }
+enum FeedType { email, message, news }
 
-class FeedItem {
+class FeedItemVM {
   final String id;
   final FeedType type;
   final List<String> categories; // e.g., ['urgent','work']
@@ -21,7 +46,7 @@ class FeedItem {
   final List<String> tags;
   final String time; // e.g., '2h ago'
   final int? priority; // optional 1..10
-  FeedItem({
+  FeedItemVM({
     required this.id,
     required this.type,
     required this.categories,
@@ -87,7 +112,7 @@ class HubItem {
 
 enum Priority { low, medium, high }
 
-class TodoItem {
+class TodoItemVM {
   final String id;
   String title;
   String? desc; // source/description
@@ -96,7 +121,7 @@ class TodoItem {
   DateTime? due; // optional actual date if used elsewhere
   bool completed;
   List<String> tags;
-  TodoItem({
+  TodoItemVM({
     required this.id,
     required this.title,
     this.desc,
@@ -108,7 +133,7 @@ class TodoItem {
   });
 }
 
-enum EventSource { email, whatsapp, messages, phone, manual }
+enum EventSource { email, messages, phone, manual }
 
 class CalendarEventVM {
   final String id;
@@ -134,9 +159,118 @@ class CalendarEventVM {
 }
 
 class AppState extends ChangeNotifier {
-  // API service
+  // API service (Deprecated for main logic, kept for model server if needed)
   final ApiService _apiService = ApiService();
   
+  // Local Services & Repositories
+  late Isar _isar;
+  late FeedRepository _feedRepository;
+  late TaskRepository _taskRepository;
+  ModelRepository? _modelRepository;
+  late CalendarEventRepository _calendarEventRepository;
+  HubRepository? _hubRepository;
+  late UserFeedbackRepository _userFeedbackRepository;
+  
+  late FeedService _feedService;
+  late TaskExtractor _taskExtractor;
+  late RankingService _rankingService;
+  late SearchService _searchService;
+  late NotificationDispatcher _notificationDispatcher;
+  
+  bool _isInitialized = false;
+
+  // Getters for services/repos
+  ModelRepository get modelRepository {
+    if (_modelRepository == null) {
+      throw StateError('ModelRepository not initialized. Call init() first.');
+    }
+    return _modelRepository!;
+  }
+  
+  HubRepository get hubRepository {
+    if (_hubRepository == null) {
+      throw StateError('HubRepository not initialized. Call init() first.');
+    }
+    return _hubRepository!;
+  }
+
+  // Getters that read from Isar for real-time UI
+  List<FeedItemVM> get filteredFeed {
+    if (!_isInitialized) return [];
+    
+    try {
+      final items = _isar.feedItems
+          .where()
+          .sortByTimestampDesc()
+          .findAllSync()
+          .map((item) => _convertLocalToUIFeedItem(item))
+          .toList();
+      
+      debugPrint('[AppState] filteredFeed: returning ${items.length} items');
+      return items;
+    } catch (e) {
+      debugPrint('[AppState] Error in filteredFeed: $e');
+      return [];
+    }
+  }
+  
+  List<TodoItemVM> get filteredTodos {
+    if (!_isInitialized) return [];
+    
+    try {
+      final tasks = _isar.tasks
+          .where()
+          .filter()
+          .completedEqualTo(false)
+          .sortByPriorityDesc()
+          .findAllSync()
+          .map((task) => TodoItemVM(
+                id: task.id.toString(),
+                title: task.title,
+                desc: task.text,
+                priority: _mapPriority(task.priority),
+                dueLabel: task.dueDate != null ? _formatDate(task.dueDate!) : null,
+                due: task.dueDate,
+                completed: task.completed,
+                tags: [],
+              ))
+          .toList();
+      
+      debugPrint('[AppState] filteredTodos: returning ${tasks.length} items');
+      return tasks;
+    } catch (e) {
+      debugPrint('[AppState] Error in filteredTodos: $e');
+      return [];
+    }
+  }
+  
+  List<CalendarEventVM> get events {
+    if (!_isInitialized) return [];
+    
+    try {
+      final events = _isar.calendarEvents
+          .where()
+          .sortByStart()
+          .findAllSync();
+      
+      // Convert to CalendarEventVM (simplified - adjust as needed)
+      return events.map((e) => CalendarEventVM(
+            id: e.id.toString(),
+            title: e.title,
+            date: e.start,
+            start: TimeOfDay.fromDateTime(e.start),
+            duration: e.end != null ? e.end!.difference(e.start) : const Duration(hours: 1),
+            gradient: [const Color(0xFFA855F7), const Color(0xFF8B5CF6)],
+            location: e.location,
+            source: EventSource.manual,
+            isAIDetected: true,
+          )).toList();
+    } catch (e) {
+      debugPrint('[AppState] Error in events: $e');
+      return [];
+    }
+  }
+
   // Loading states
   bool _isLoadingFeed = false;
   bool _isLoadingTasks = false;
@@ -170,12 +304,89 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> init() async {
-    await _loadFeedFromBackend();
-    await _loadTodosFromBackend();
-    await _loadEventsFromBackend();
+    await _initIsar();
+    await _loadFeedFromLocal();
+    await _loadTodosFromLocal();
+    await _loadEventsFromLocal();
+    await _loadHubsFromLocal();
     
-    // Start automatic polling every 30 seconds
-    startPolling();
+    // Start automatic polling (now just refreshing from local DB if needed, or relying on streams)
+    // startPolling(); // Polling might not be needed if we use streams, but for now keep it to refresh UI
+  }
+
+  Future<void> _initIsar() async {
+    if (_isInitialized) return;
+
+    final dir = await getApplicationDocumentsDirectory();
+    
+    _isar = await Isar.open(
+      [
+        schema.FeedItemSchema,
+        schema.TaskSchema,
+        schema.ModelRecordSchema,
+        schema.CalendarEventSchema,
+        schema.HubSchema,
+        schema.UserFeedbackSchema,
+      ],
+      directory: dir.path,
+    );
+
+    _feedRepository = FeedRepository(_isar);
+    _taskRepository = TaskRepository(_isar);
+    _modelRepository = ModelRepository(_isar);
+    _calendarEventRepository = CalendarEventRepository(_isar);
+    _hubRepository = HubRepository(_isar);
+    _userFeedbackRepository = UserFeedbackRepository(_isar);
+
+    _rankingService = RankingService();
+    // LocalLLMService is a singleton, so we just use the instance
+    _taskExtractor = TaskExtractor(LocalLLMService());
+    
+    _feedService = FeedService(
+      _feedRepository,
+      _taskRepository,
+      _hubRepository!,
+      _userFeedbackRepository, // Now using in-memory version
+      _taskExtractor,
+      _rankingService,
+      _isar,
+    );
+    
+    _searchService = SearchService(_feedRepository);
+    
+    debugPrint('[AppState] Creating NotificationDispatcher...');
+    _notificationDispatcher = NotificationDispatcher(_feedService);
+    
+    // Set up Isar watchers for real-time UI updates
+    _setupIsarWatchers();
+    
+    _isInitialized = true;
+    debugPrint('[AppState] ✅ Initialization complete!');
+  }
+  
+  /// Sets up Isar watchers to automatically update UI when data changes
+  void _setupIsarWatchers() {
+    debugPrint('[AppState] Setting up Isar watchers for real-time updates...');
+    
+    // Watch for FeedItem changes
+    _isar.feedItems.watchLazy().listen((_) {
+      debugPrint('[AppState] 🔄 FeedItems changed, notifying listeners...');
+      notifyListeners();
+    });
+    
+    // Watch for Task changes
+    _isar.tasks.watchLazy().listen((_) {
+      debugPrint('[AppState] 🔄 Tasks changed, notifying listeners...');
+      notifyListeners();
+    });
+    
+    // Watch for CalendarEvent changes
+    _isar.calendarEvents.watchLazy().listen((_) {
+      debugPrint('[AppState] 🔄 CalendarEvents changed, notifying listeners...');
+      notifyListeners();
+    });
+    
+    debugPrint('[AppState] ✅ Isar watchers set up successfully!');
   }
   
   /// Start automatic polling for live updates
@@ -230,19 +441,47 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Home hubs and items
-  final List<String> hubs = const [
-    'Urgent & Priority',
-    'Conversations',
-    'Work & Email',
-    'Reminders',
-    'Finance',
-    'News & Trends',
-    'Personal',
-  ];
+  // Dynamic hubs from DB
+  List<schema.Hub> _hubs = [];
+  List<schema.Hub> get hubs => _hubs;
+
+  Future<void> _loadHubsFromLocal() async {
+    try {
+      await _hubRepository!.ensureDefaultHubs();
+      _hubs = await _hubRepository!.getAllHubs();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AppState] Error loading hubs: $e');
+    }
+  }
+
+  Future<void> deleteHub(int id) async {
+    try {
+      await _hubRepository!.deleteHub(id);
+      await _loadHubsFromLocal();
+      // Reset tab if deleted hub was selected
+      if (_selectedHubTab != 'Hubs' && _selectedHubTab != 'All') {
+        // Check if selected hub still exists
+        if (!_hubs.any((h) => h.name == _selectedHubTab)) {
+          _selectedHubTab = 'Hubs';
+        }
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[AppState] Error deleting hub: $e');
+    }
+  }
+
+  // Data Lists
+  final List<TodoItemVM> _todoItems = [];
+  final List<CalendarEventVM> _events = [];
+
+  List<TodoItemVM> get todoItems => _todoItems;
+  // events getter now reads from Isar - see line 244
+
   // New: feed items mirroring HomeFeed.tsx mockData
-  final List<FeedItem> _feedItems = [
-    FeedItem(
+  final List<FeedItemVM> _feedItems = [
+    FeedItemVM(
       id: '1',
       type: FeedType.email,
       categories: ['urgent', 'work', 'reminders'],
@@ -255,9 +494,9 @@ class AppState extends ChangeNotifier {
       time: '2h ago',
       priority: 9,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '2',
-      type: FeedType.whatsapp,
+      type: FeedType.message,
       categories: ['personal', 'conversations'],
       sender: 'Alex Rivera',
       title: 'Dinner plans this weekend?',
@@ -268,7 +507,7 @@ class AppState extends ChangeNotifier {
       time: '1h ago',
       priority: 5,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '2b',
       type: FeedType.message,
       categories: ['work', 'conversations'],
@@ -281,7 +520,7 @@ class AppState extends ChangeNotifier {
       time: '4h ago',
       priority: 6,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '3',
       type: FeedType.news,
       categories: ['news', 'trends'],
@@ -294,7 +533,7 @@ class AppState extends ChangeNotifier {
       time: '6h ago',
       priority: 4,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '4',
       type: FeedType.email,
       categories: ['work', 'news'],
@@ -307,9 +546,9 @@ class AppState extends ChangeNotifier {
       time: '1d ago',
       priority: 3,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '5b',
-      type: FeedType.whatsapp,
+      type: FeedType.message,
       categories: ['reminders', 'personal'],
       sender: 'Study Group',
       title: 'Quiz prep tonight',
@@ -320,7 +559,7 @@ class AppState extends ChangeNotifier {
       time: '5h ago',
       priority: 8,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '6',
       type: FeedType.email,
       categories: ['urgent', 'work', 'reminders'],
@@ -333,7 +572,7 @@ class AppState extends ChangeNotifier {
       time: '2d ago',
       priority: 10,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '7',
       type: FeedType.news,
       categories: ['news', 'trends'],
@@ -346,7 +585,7 @@ class AppState extends ChangeNotifier {
       time: '2d ago',
       priority: 2,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '8',
       type: FeedType.message,
       categories: ['personal', 'reminders'],
@@ -359,7 +598,7 @@ class AppState extends ChangeNotifier {
       time: '3d ago',
       priority: 7,
     ),
-    FeedItem(
+    FeedItemVM(
       id: '10',
       type: FeedType.email,
       categories: ['finance'],
@@ -428,33 +667,24 @@ class AppState extends ChangeNotifier {
     return list.toList();
   }
 
-  // New filtered feed applying search and custom filter (simple contains for demo)
-  List<FeedItem> get filteredFeed {
-    Iterable<FeedItem> list = _feedItems;
-    final q = _search.toLowerCase();
-    if (q.isNotEmpty) {
-      list = list.where((f) => f.title.toLowerCase().contains(q) || f.summary.toLowerCase().contains(q) || (f.fullContent ?? '').toLowerCase().contains(q));
-    }
-    final cf = _customFilter.trim().toLowerCase();
-    if (cf.isNotEmpty) {
-      list = list.where((f) => f.title.toLowerCase().contains(cf) || f.summary.toLowerCase().contains(cf) || f.tags.any((t) => t.toLowerCase().contains(cf)));
-    }
-    return list.toList();
-  }
+  // feedItems and filteredFeed now read from Isar - see line 195
+  // Keeping this for backward compatibility - redirects to Isar-based getter
+  List<FeedItemVM> get feedItems => filteredFeed;
 
   // Priority feed - high priority items from backend
-  List<FeedItem> get priorityFeed {
-    return _feedItems.where((f) => (f.priority ?? 0) >= 8).toList()
+  List<FeedItemVM> get priorityFeed {
+    return filteredFeed.where((f) => (f.priority ?? 0) >= 8).toList()
       ..sort((a, b) => (b.priority ?? 0).compareTo(a.priority ?? 0));
   }
 
   // Unread count
   int get unreadCount => _feedItems.where((f) => f.tags.contains('unread')).length;
 
-  List<FeedItem> getHubItems(CategoryConfig hub) {
+  List<FeedItemVM> getHubItems(CategoryConfig hub) {
     // filter by category id
     return filteredFeed.where((f) => f.categories.contains(hub.id)).toList();
   }
+
 
   /// Load feed items from backend and convert to UI models
   Future<void> _loadFeedFromBackend() async {
@@ -472,22 +702,11 @@ class AppState extends ChangeNotifier {
         return;
       }
 
-      // Fetch feed from backend
-      final backendItems = await _apiService.fetchFeed();
-      print('Loaded ${backendItems.length} items from backend');
-
-      // Convert backend items to UI feed items
-      _feedItems.clear();
-      for (final item in backendItems) {
-        _feedItems.add(_convertBackendToUIFeedItem(item));
-      }
-
-      // Rebuild hub items
-      _hubItems.clear();
-
-      print('Successfully loaded ${_feedItems.length} feed items from backend');
+      // TODO: implement actual backend feed loading when ready.
+      // For now, just rely on local DB / mock data.
+      print('Backend is healthy, but _loadFeedFromBackend is not implemented yet.');
     } catch (e) {
-      _errorMessage = 'Failed to load feed: $e';
+      _errorMessage = 'Failed to load feed from backend: $e';
       print('Error loading feed from backend: $e');
     } finally {
       _isLoadingFeed = false;
@@ -495,15 +714,35 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Convert backend feed item to UI feed item
-  FeedItem _convertBackendToUIFeedItem(backend.BackendFeedItem item) {
+  Future<void> _loadFeedFromLocal() async {
+    try {
+      _isLoadingFeed = true;
+      notifyListeners();
+      
+      final items = await _feedRepository.getFeed();
+      _feedItems.clear();
+      for (final item in items) {
+        _feedItems.add(_convertLocalToUIFeedItem(item));
+      }
+    } catch (e) {
+      _errorMessage = 'Failed to load feed: $e';
+      print('Error loading feed from local DB: $e');
+    } finally {
+      _isLoadingFeed = false;
+      notifyListeners();
+    }
+  }
+
+  /// Convert local schema feed item to UI feed item
+  FeedItemVM _convertLocalToUIFeedItem(schema.FeedItem item) {
     // Determine feed type based on source
     FeedType type = FeedType.message;
-    if (item.source.toLowerCase().contains('email')) {
+    final source = item.source.toLowerCase();
+    if (source.contains('email')) {
       type = FeedType.email;
-    } else if (item.source.toLowerCase().contains('whatsapp')) {
-      type = FeedType.whatsapp;
-    } else if (item.source.toLowerCase().contains('news')) {
+    } else if (source.contains('message')) {
+      type = FeedType.message;
+    } else if (source.contains('news')) {
       type = FeedType.news;
     }
 
@@ -512,13 +751,13 @@ class AppState extends ChangeNotifier {
     if (item.priority >= 8) {
       categories.add('urgent');
     }
-    if (item.source.toLowerCase().contains('email') || item.source.toLowerCase().contains('work')) {
+    if (source.contains('email') || source.contains('work')) {
       categories.add('work');
     }
-    if (item.source.toLowerCase().contains('whatsapp') || item.source.toLowerCase().contains('message')) {
+    if (source.contains('message')) {
       categories.add('conversations');
     }
-    if (item.source.toLowerCase().contains('news')) {
+    if (source.contains('news')) {
       categories.add('news');
       categories.add('trends');
     }
@@ -526,26 +765,36 @@ class AppState extends ChangeNotifier {
       categories.add('personal');
     }
 
+    // Extract metadata if available
+    Map<String, dynamic> meta = {};
+    if (item.metadataJson != null) {
+      try {
+        meta = json.decode(item.metadataJson!);
+      } catch (e) {
+        print('Error parsing metadata JSON: $e');
+      }
+    }
+
     // Extract sender from metadata or use source
-    String sender = item.metaData?['sender'] ?? item.source;
+    String sender = meta['sender'] ?? item.source;
 
     // Format time ago
-    String timeAgo = _formatTimeAgo(item.date);
+    String timeAgo = _formatTimeAgo(item.timestamp);
 
     // Extract tags from metadata
     List<String> tags = [];
-    if (item.metaData?['tags'] != null) {
-      tags = List<String>.from(item.metaData!['tags']);
+    if (meta['tags'] != null) {
+      tags = List<String>.from(meta['tags']);
     }
 
-    return FeedItem(
-      id: item.id,
+    return FeedItemVM(
+      id: item.id.toString(),
       type: type,
       categories: categories,
       sender: sender,
-      title: item.title,
+      title: item.summary, // Use summary as title for now, or extract title from content
       summary: item.summary,
-      fullContent: item.fullText,
+      fullContent: item.content,
       tags: tags,
       time: timeAgo,
       priority: item.priority,
@@ -568,6 +817,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  FeedItemVM _convertBackendToUIFeedItem(dynamic item) {
+    // TODO: Implement actual conversion from backend model to FeedItemVM
+    // For now returning a dummy item to satisfy compilation
+    return FeedItemVM(
+      id: 'backend_${DateTime.now().millisecondsSinceEpoch}',
+      type: FeedType.news,
+      categories: ['news'],
+      sender: 'Backend',
+      title: 'Backend Item',
+      summary: 'Item from backend',
+      tags: [],
+      time: 'Just now',
+    );
+  }
+
+  Future<void> _loadEventsFromBackend() async {
+     // TODO: Implement backend event loading
+     // Stub implementation
+  }
+
   /// Refresh feed from backend
   Future<void> refreshFeed() async {
     await _loadFeedFromBackend();
@@ -575,8 +844,11 @@ class AppState extends ChangeNotifier {
     await _loadEventsFromBackend();
   }
 
-  /// Load AI-extracted todos from backend
+  /// Load AI-extracted todos from backend (deprecated - using offline-first now)
   Future<void> _loadTodosFromBackend() async {
+    // Offline-first mode - not loading from backend
+    return;
+    /* 
     try {
       final backendTodos = await _apiService.fetchTodos(completed: false);
       print('Loaded ${backendTodos.length} todos from backend');
@@ -600,59 +872,75 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       print('Error loading todos from backend: $e');
     }
+    */
   }
 
-  /// Load AI-extracted events from backend
-  Future<void> _loadEventsFromBackend() async {
+
+
+  Future<void> _loadTodosFromLocal() async {
     try {
-      final backendEvents = await _apiService.fetchEvents();
-      print('Loaded ${backendEvents.length} events from backend');
-
-      // Convert backend events to UI calendar events
-      for (final eventData in backendEvents) {
-        if (eventData['start_time'] == null) continue;
-
-        try {
-          final startTime = DateTime.parse(eventData['start_time']);
-          final duration = Duration(minutes: eventData['duration_minutes'] ?? 60);
-
-          // Determine gradient based on source
-          List<Color> gradient = const [Color(0xFFA855F7), Color(0xFF7C3AED)];
-          if (eventData['source'] == 'whatsapp') {
-            gradient = const [Color(0xFF22C55E), Color(0xFF16A34A)];
-          } else if (eventData['source'] == 'email') {
-            gradient = const [Color(0xFF3B82F6), Color(0xFF2563EB)];
-          }
-
-          final calendarEvent = CalendarEventVM(
-            id: eventData['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-            title: eventData['title'] ?? 'Event',
-            date: startTime,
-            start: TimeOfDay(hour: startTime.hour, minute: startTime.minute),
-            duration: duration,
-            gradient: gradient,
-            location: eventData['location'],
-            source: _mapEventSource(eventData['source']),
-            isAIDetected: eventData['is_ai_detected'] ?? true,
-          );
-
-          _events.add(calendarEvent);
-        } catch (e) {
-          print('Error parsing event: $e');
-        }
+      _isLoadingTasks = true;
+      notifyListeners();
+      
+      final tasks = await _taskRepository.getTasks();
+      _todoItems.clear();
+      for (final task in tasks) {
+        _todoItems.add(TodoItemVM(
+          id: task.id.toString(),
+          title: task.title,
+          desc: task.text,
+          priority: _mapPriority(task.priority),
+          dueLabel: task.dueDate != null ? _formatDate(task.dueDate!) : null,
+          due: task.dueDate,
+          completed: task.completed,
+          tags: [], // TODO: Add tags to Task schema if needed
+        ));
       }
+    } catch (e) {
+      print('Error loading tasks from local DB: $e');
+    } finally {
+      _isLoadingTasks = false;
+      notifyListeners();
+    }
+  }
 
-      print('Successfully loaded ${backendEvents.length} events from backend');
+  Priority _mapPriority(int p) {
+    if (p >= 8) return Priority.high;
+    if (p >= 5) return Priority.medium;
+    return Priority.low;
+  }
+
+  String _formatDate(DateTime d) {
+    return '${d.month}/${d.day}';
+  }
+
+  Future<void> _loadEventsFromLocal() async {
+    try {
+      final events = await _calendarEventRepository.getEvents();
+      _events.clear();
+      for (final event in events) {
+        _events.add(CalendarEventVM(
+          id: event.id.toString(),
+          title: event.title,
+          date: event.start,
+          start: TimeOfDay.fromDateTime(event.start),
+          duration: event.end != null ? event.end!.difference(event.start) : const Duration(hours: 1),
+          gradient: [Colors.blue, Colors.purple], // Default gradient
+          location: event.location,
+          source: EventSource.manual, // Or infer from metadata
+          isAIDetected: true, // Assuming mostly AI generated for now
+        ));
+      }
       notifyListeners();
     } catch (e) {
-      print('Error loading events from backend: $e');
+      print('Error loading events from local DB: $e');
     }
   }
 
   EventSource _mapEventSource(String? source) {
     switch (source?.toLowerCase()) {
-      case 'whatsapp':
-        return EventSource.whatsapp;
+      case 'message':
+        return EventSource.messages;
       case 'email':
         return EventSource.email;
       case 'phone':
@@ -709,8 +997,8 @@ class AppState extends ChangeNotifier {
       dueLabel = '$month ${task.dueDate!.day}';
     }
 
-    final todoItem = TodoItem(
-      id: task.id,
+    final todoItem = TodoItemVM(
+      id: task.id.toString(),
       title: task.title,
       desc: task.text,
       priority: priority,
@@ -791,18 +1079,12 @@ class AppState extends ChangeNotifier {
   }
 
   // Seeded from React mockTasks (TodoScreen.tsx)
-  final List<TodoItem> _todos = [
-    TodoItem(id: '1', title: 'Review Q4 metrics before Thursday meeting', desc: 'Email from Sarah', priority: Priority.high, dueLabel: 'Oct 18', completed: false),
-    TodoItem(id: '2', title: 'Respond to Alex about weekend dinner', desc: 'Message from Alex', priority: Priority.medium, completed: false),
-    TodoItem(id: '3', title: 'Check campaign performance report', desc: 'Email from Marketing', priority: Priority.medium, dueLabel: 'Oct 20', completed: false),
-    TodoItem(id: '4', title: 'Get book recommendation from Jamie', desc: 'Message from Jamie', priority: Priority.low, completed: false),
-    TodoItem(id: '5', title: 'Complete benefits enrollment', desc: 'Email from HR', priority: Priority.high, dueLabel: 'Oct 19', completed: false),
-    TodoItem(id: '6', title: 'Confirm family dinner attendance', desc: 'Message from Mom', priority: Priority.medium, dueLabel: 'Oct 21', completed: false),
-    TodoItem(id: '7', title: 'Review design trends article', desc: 'Design Weekly', priority: Priority.low, completed: false),
-    TodoItem(id: '8', title: 'Prepare presentation slides', desc: 'Email from Sarah', priority: Priority.high, dueLabel: 'Oct 18', completed: false),
+  final List<TodoItemVM> _todos = [
+    TodoItemVM(id: '7', title: 'Review design trends article', desc: 'Design Weekly', priority: Priority.low, completed: false),
+    TodoItemVM(id: '8', title: 'Prepare presentation slides', desc: 'Email from Sarah', priority: Priority.high, dueLabel: 'Oct 18', completed: false),
   ];
-  List<TodoItem> get todos {
-    Iterable<TodoItem> list = _todos;
+  List<TodoItemVM> get todos {
+    Iterable<TodoItemVM> list = _todos;
     if (_todoFilterNullable != null) {
       list = list.where((t) => t.priority == _todoFilterNullable);
     }
@@ -811,10 +1093,10 @@ class AppState extends ChangeNotifier {
     return list.toList();
   }
   // Grouping parity with React: today = labels 'Oct 18' or 'Oct 19'; upcoming = other labels; backlog = no label
-  List<TodoItem> get today => todos.where((t) => (t.dueLabel == 'Oct 18' || t.dueLabel == 'Oct 19') && !t.completed).toList();
-  List<TodoItem> get upcoming => todos.where((t) => t.dueLabel != null && !(t.dueLabel == 'Oct 18' || t.dueLabel == 'Oct 19') && !t.completed).toList();
-  List<TodoItem> get backlog => todos.where((t) => t.dueLabel == null && !t.completed).toList();
-  List<TodoItem> get completed => _todos.where((t) => t.completed).toList();
+  List<TodoItemVM> get today => todos.where((t) => (t.dueLabel == 'Oct 18' || t.dueLabel == 'Oct 19') && !t.completed).toList();
+  List<TodoItemVM> get upcoming => todos.where((t) => t.dueLabel != null && !(t.dueLabel == 'Oct 18' || t.dueLabel == 'Oct 19') && !t.completed).toList();
+  List<TodoItemVM> get backlog => todos.where((t) => t.dueLabel == null && !t.completed).toList();
+  List<TodoItemVM> get completed => _todos.where((t) => t.completed).toList();
 
   void toggleTodo(String id) async {
     final i = _todos.indexWhere((t) => t.id == id);
@@ -839,7 +1121,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void addTodo(TodoItem item) async {
+  void addTodo(TodoItemVM item) async {
     _todos.insert(0, item);
     notifyListeners();
     
@@ -903,88 +1185,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Seeded from React initialMockEvents (CalendarScreen.tsx)
-  final List<CalendarEventVM> _events = [
-    CalendarEventVM(
-      id: '1',
-      title: 'Q4 Review Meeting',
-      date: DateTime(2025, 10, 18),
-      start: const TimeOfDay(hour: 14, minute: 0),
-      duration: const Duration(minutes: 90),
-      gradient: const [Color(0xFF3B82F6), Color(0xFF2563EB)],
-      location: 'Conference Room A',
-      source: EventSource.email,
-      isAIDetected: true,
-    ),
-    CalendarEventVM(
-      id: '2',
-      title: 'Dinner with Alex',
-      date: DateTime(2025, 10, 20),
-      start: const TimeOfDay(hour: 19, minute: 0),
-      duration: const Duration(minutes: 120),
-      gradient: const [Color(0xFFA855F7), Color(0xFF7C3AED)],
-      location: 'Downtown Restaurant',
-      source: EventSource.whatsapp,
-      isAIDetected: true,
-    ),
-    CalendarEventVM(
-      id: '3',
-      title: 'Team Sync',
-      date: DateTime(2025, 10, 22),
-      start: const TimeOfDay(hour: 10, minute: 0),
-      duration: const Duration(minutes: 30),
-      gradient: const [Color(0xFF22C55E), Color(0xFF16A34A)],
-      source: EventSource.messages,
-      isAIDetected: false,
-    ),
-    CalendarEventVM(
-      id: '4',
-      title: 'Marketing Review',
-      date: DateTime(2025, 10, 22),
-      start: const TimeOfDay(hour: 15, minute: 0),
-      duration: const Duration(minutes: 60),
-      gradient: const [Color(0xFFF59E0B), Color(0xFFD97706)],
-      location: 'Virtual',
-      source: EventSource.email,
-      isAIDetected: false,
-    ),
-    CalendarEventVM(
-      id: '5',
-      title: 'Family Dinner',
-      date: DateTime(2025, 10, 21),
-      start: const TimeOfDay(hour: 18, minute: 0),
-      duration: const Duration(minutes: 90),
-      gradient: const [Color(0xFFEC4899), Color(0xFFE11D48)],
-      location: 'Home',
-      source: EventSource.whatsapp,
-      isAIDetected: true,
-    ),
-    CalendarEventVM(
-      id: '6',
-      title: 'Presentation Prep',
-      date: DateTime(2025, 10, 18),
-      start: const TimeOfDay(hour: 9, minute: 0),
-      duration: const Duration(minutes: 120),
-      gradient: const [Color(0xFF06B6D4), Color(0xFF0D9488)],
-      source: EventSource.manual,
-      isAIDetected: false,
-    ),
-    CalendarEventVM(
-      id: '7',
-      title: 'Coffee Break',
-      date: DateTime(2025, 10, 18),
-      start: const TimeOfDay(hour: 11, minute: 15),
-      duration: const Duration(minutes: 30),
-      gradient: const [Color(0xFFF59E0B), Color(0xFFCA8A04)],
-      source: EventSource.messages,
-      isAIDetected: false,
-    ),
-  ];
-
   List<CalendarEventVM> eventsForDay(DateTime d) =>
       _events.where((e) => _isSameDay(e.date, d)).toList()..sort((a, b) => _toMinutes(a.start).compareTo(_toMinutes(b.start)));
-
-  List<CalendarEventVM> get events => List.unmodifiable(_events);
 
   void addEvent(CalendarEventVM e) async {
     _events.add(e);
@@ -1082,6 +1284,22 @@ class AppState extends ChangeNotifier {
       // Restore on error
       _events.insert(index, removedEvent);
       notifyListeners();
+    }
+  }
+
+  // Handle user feedback (Swipe to Hide)
+  Future<void> handleUserFeedback(String feedItemId, String reason) async {
+    try {
+      final id = int.tryParse(feedItemId);
+      if (id != null) {
+        await _feedService.handleUserFeedback(id, reason);
+        // Optimistically remove from UI lists
+        _feedItems.removeWhere((i) => i.id.toString() == feedItemId);
+        // _priorityFeedItems.removeWhere((i) => i.id.toString() == feedItemId);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[AppState] Error handling user feedback: $e');
     }
   }
 

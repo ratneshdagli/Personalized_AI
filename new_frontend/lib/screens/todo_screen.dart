@@ -1,25 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/lavish_background.dart';
 import '../widgets/todo_card.dart';
 import '../theme/colors.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../widgets/add_item_sheet.dart';
 
-// Visual-only ToDo screen port mapped from Figma/React list cards.
-// CSS→Flutter mapping notes:
-// - Header paddings: `px-4 py-4` => EdgeInsets.all(16)
-// - Section gaps: `space-y-3` => SizedBox(height: 12)
-// - Cards: glass surface `bg-slate-800/50 border-white/10` => CommonStyles.glass(radius: 20)
-// - Priority chip gradients: from-purple-500 to-pink-500, etc.
+// Todo screen mapped from `src/components/Todo.tsx`:
+// - Title/subtitle with gradient accent icon
+// - List of todo cards showing task data extracted from feed
+// - Task can be expanded to show details (tapping opens a sheet)
 class TodoScreen extends StatelessWidget {
   const TodoScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return GradientBackground(
+    final state = context.watch<AppState>();
+    final todos = state.todos;
+
+    return LavishBackground(
+      dark: true,
       child: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -105,7 +107,7 @@ class TodoScreen extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const AddItemSheet(),
+      builder: (_) => AddItemSheet(),
     );
   }
 }
@@ -176,7 +178,7 @@ class _FilterTabs extends StatelessWidget {
               context: context,
               isScrollControlled: true,
               backgroundColor: Colors.transparent,
-              builder: (_) => const AddItemSheet(),
+              builder: (_) => AddItemSheet(),
             ),
             borderRadius: BorderRadius.circular(10),
             child: const Icon(LucideIcons.plus, color: Colors.white, size: 18),
@@ -188,7 +190,7 @@ class _FilterTabs extends StatelessWidget {
 }
 
 class _TodoList extends StatelessWidget {
-  final List<TodoItem> items;
+  final List<TodoItemVM> items;
   const _TodoList({required this.items});
 
   List<Color> _gradFor(Priority p) {
@@ -225,6 +227,8 @@ class _TodoList extends StatelessWidget {
               return 'Medium';
             case Priority.low:
               return 'Low';
+            default:
+              return 'Medium';
           }
         }
         String? _dueLabel() => t.dueLabel;

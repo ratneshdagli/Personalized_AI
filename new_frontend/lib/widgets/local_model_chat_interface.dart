@@ -79,7 +79,10 @@ class _LocalModelChatInterfaceState extends State<LocalModelChatInterface> {
     
     try {
           final stopwatch = Stopwatch()..start();
-      final responseStream = _llmService.generateResponse(message);
+      final responseStream = _llmService.generateResponseWithPrompt(
+        message,
+        systemPrompt: LocalLLMService.chatSystemPrompt,
+      );
       await for (final token in responseStream) {
         if (!mounted) return;
         final elapsed = stopwatch.elapsed;

@@ -56,17 +56,7 @@ class AppGradients {
     );
   }
 
-  static LinearGradient whatsapp(BuildContext context) {
-    final dark = _isDark(context);
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        dark ? AppColors.darkChart5Start : AppColors.lightChart5Start,
-        dark ? AppColors.darkChart5End : AppColors.lightChart5End,
-      ],
-    );
-  }
+
 
   static LinearGradient urgent(BuildContext context) {
     final dark = _isDark(context);

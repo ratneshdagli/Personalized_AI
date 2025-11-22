@@ -10,9 +10,11 @@ import 'screens/home_screen.dart';
 import 'screens/other_screens.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/todo_screen.dart';
+import 'screens/settings_screen.dart';
 import 'widgets/bottom_nav.dart';
 import 'state/app_state.dart';
 import 'llm/model_prompt.dart';
+import 'screens/notification_access_screen.dart';
 
 void main() {
   // Ensure Flutter bindings are initialized
@@ -89,10 +91,27 @@ class _MyHomePageState extends State<MyHomePage> {
   void initState() {
     super.initState();
     // Use addPostFrameCallback to ensure the context is available
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AppState>().init();
-      // Prompt to enable on-device model if not present
-      maybePromptModelDownload(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await context.read<AppState>().init();
+      
+      if (mounted) {
+        // Check for notification access
+        try {
+          const platform = MethodChannel('com.personalized_ai.app/notifications');
+          final bool granted = await platform.invokeMethod('isNotificationAccessGranted');
+          if (!granted) {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NotificationAccessScreen()),
+            );
+            return;
+          }
+        } catch (e) {
+          debugPrint('Error checking notification permission: $e');
+        }
+
+        // Prompt to enable on-device model if not present
+        maybePromptModelDownload(context);
+      }
     });
   }
 
@@ -110,7 +129,7 @@ class _MyHomePageState extends State<MyHomePage> {
       const HomeScreen(),
       const TodoScreen(),
       const CalendarScreen(),
-      const SettingsScreen(),
+      SettingsScreen(),
     ];
 
     return Scaffold(

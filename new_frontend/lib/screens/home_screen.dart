@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../widgets/gradient_background.dart';
+import '../widgets/lavish_background.dart';
 import '../widgets/glass_card.dart';
 import 'package:provider/provider.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -23,7 +23,8 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     
-    return GradientBackground(
+    return LavishBackground(
+      dark: true,
       child: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -135,14 +136,6 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
 
-                // Model Management Card
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    child: HFModelManagerCard(),
-                  ),
-                ),
-
                 // Priority Spotlight - Dynamic from backend
                 if (!appState.isLoadingFeed && appState.priorityFeed.isNotEmpty)
                   SliverToBoxAdapter(
@@ -173,12 +166,30 @@ class HomeScreen extends StatelessWidget {
                             children: appState.priorityFeed.take(2).map((item) {
                               IconData icon = Icons.notification_important;
                               if (item.type == FeedType.email) icon = Icons.mail;
-                              if (item.type == FeedType.whatsapp) icon = Icons.chat;
-                              if (item.type == FeedType.message) icon = Icons.message;
+                              if (item.type == FeedType.message) icon = Icons.chat;
                               
                               return Padding(
                                 padding: const EdgeInsets.only(bottom: 8),
-                                child: _priorityCard(icon, item.title, '${item.sender} • ${item.time}', const [Color(0xFFEF4444), Color(0xFFF97316)]),
+                                child: Dismissible(
+                                  key: Key('priority_${item.id}'),
+                                  direction: DismissDirection.endToStart,
+                                  background: Container(
+                                    alignment: Alignment.centerRight,
+                                    padding: const EdgeInsets.only(right: 20),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Icon(Icons.visibility_off, color: Colors.white),
+                                  ),
+                                  onDismissed: (direction) {
+                                    context.read<AppState>().handleUserFeedback(item.id, 'hidden');
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Hidden: ${item.title}')),
+                                    );
+                                  },
+                                  child: _priorityCard(icon, item.title, '${item.sender} • ${item.time}', const [Color(0xFFEF4444), Color(0xFFF97316)]),
+                                ),
                               );
                             }).toList(),
                           ),
@@ -238,75 +249,78 @@ class HomeScreen extends StatelessWidget {
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: gridCount,
-                        childAspectRatio: 1.2,
+                        childAspectRatio: 0.95,
                         crossAxisSpacing: gridSpacing,
                         mainAxisSpacing: gridSpacing,
                       ),
-                      delegate: SliverChildListDelegate([
-                        _HubCard(
-                          'Urgent & Priority',
-                          Icons.error_outline,
-                          const [Color(0xFFEF4444), Color(0xFFF97316)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('Urgent & Priority');
-                            _openHubSheet(context, 'Urgent & Priority');
-                          },
-                        ),
-                        _HubCard(
-                          'Conversations',
-                          Icons.forum,
-                          const [Color(0xFF3B82F6), Color(0xFF2563EB)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('Conversations');
-                            _openHubSheet(context, 'Conversations');
-                          },
-                        ),
-                        _HubCard(
-                          'Work & Email',
-                          Icons.work_outline,
-                          const [Color(0xFF6366F1), Color(0xFF4338CA)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('Work & Email');
-                            _openHubSheet(context, 'Work & Email');
-                          },
-                        ),
-                        _HubCard(
-                          'Reminders',
-                          Icons.event,
-                          const [Color(0xFFA855F7), Color(0xFF7C3AED)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('Reminders');
-                            _openHubSheet(context, 'Reminders');
-                          },
-                        ),
-                        _HubCard(
-                          'Finance',
-                          Icons.attach_money,
-                          const [Color(0xFF22C55E), Color(0xFF16A34A)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('Finance');
-                            _openHubSheet(context, 'Finance');
-                          },
-                        ),
-                        _HubCard(
-                          'News & Trends',
-                          Icons.trending_up,
-                          const [Color(0xFFF59E0B), Color(0xFFD97706)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('News & Trends');
-                            _openHubSheet(context, 'News & Trends');
-                          },
-                        ),
-                        _HubCard(
-                          'Personal',
-                          Icons.favorite_border,
-                          const [Color(0xFFEC4899), Color(0xFFDB2777)],
-                          onTap: () {
-                            context.read<AppState>().setHubTab('Personal');
-                            _openHubSheet(context, 'Personal');
-                          },
-                        ),
-                      ]),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final hub = appState.hubs[index];
+                          // Map hub name to icon/color dynamically or use stored values
+                          // For now, simple mapping based on name
+                          IconData icon = Icons.folder_open;
+                          List<Color> gradient = [const Color(0xFF64748B), const Color(0xFF475569)];
+                          
+                          final nameLower = hub.name.toLowerCase();
+                          if (nameLower.contains('urgent')) {
+                            icon = Icons.error_outline;
+                            gradient = [const Color(0xFFEF4444), const Color(0xFFF97316)];
+                          } else if (nameLower.contains('conversation') || nameLower.contains('chat')) {
+                            icon = Icons.forum;
+                            gradient = [const Color(0xFF3B82F6), const Color(0xFF2563EB)];
+                          } else if (nameLower.contains('work') || nameLower.contains('email')) {
+                            icon = Icons.work_outline;
+                            gradient = [const Color(0xFF6366F1), const Color(0xFF4338CA)];
+                          } else if (nameLower.contains('reminder') || nameLower.contains('task')) {
+                            icon = Icons.event;
+                            gradient = [const Color(0xFFA855F7), const Color(0xFF7C3AED)];
+                          } else if (nameLower.contains('finance') || nameLower.contains('money')) {
+                            icon = Icons.attach_money;
+                            gradient = [const Color(0xFF22C55E), const Color(0xFF16A34A)];
+                          } else if (nameLower.contains('news')) {
+                            icon = Icons.trending_up;
+                            gradient = [const Color(0xFFF59E0B), const Color(0xFFD97706)];
+                          } else if (nameLower.contains('personal')) {
+                            icon = Icons.favorite_border;
+                            gradient = [const Color(0xFFEC4899), const Color(0xFFDB2777)];
+                          }
+
+                          return _HubCard(
+                            hub.name,
+                            icon,
+                            gradient,
+                            onTap: () {
+                              context.read<AppState>().setHubTab(hub.name);
+                              _openHubSheet(context, hub.name);
+                            },
+                            onLongPress: () {
+                              // Confirm deletion
+                              showDialog(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  backgroundColor: const Color(0xFF1E293B),
+                                  title: const Text('Delete Hub?', style: TextStyle(color: Colors.white)),
+                                  content: Text('Are you sure you want to delete "${hub.name}"?', style: const TextStyle(color: Colors.white70)),
+                                  actions: [
+                                    TextButton(
+                                      child: const Text('Cancel'),
+                                      onPressed: () => Navigator.pop(ctx),
+                                    ),
+                                    TextButton(
+                                      child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                      onPressed: () {
+                                        Navigator.pop(ctx);
+                                        context.read<AppState>().deleteHub(hub.id);
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        childCount: appState.hubs.length,
+                      ),
                     ),
                   ),
                   // Recent Activity section
@@ -327,7 +341,23 @@ class HomeScreen extends StatelessWidget {
                         (context, index) {
                           final filtered = context.watch<AppState>().filteredFeed;
                           final item = filtered[index];
-                          return _RecentActivityCard(item: item);
+                          return Dismissible(
+                            key: Key('recent_${item.id}'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              color: Colors.red,
+                              child: const Icon(Icons.visibility_off, color: Colors.white),
+                            ),
+                            onDismissed: (direction) {
+                              context.read<AppState>().handleUserFeedback(item.id, 'hidden');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Hidden: ${item.title}')),
+                              );
+                            },
+                            child: _RecentActivityCard(item: item),
+                          );
                         },
                         childCount: (() {
                           final n = context.watch<AppState>().filteredFeed.length;
@@ -350,7 +380,23 @@ class HomeScreen extends StatelessWidget {
                         (context, index) {
                           final items = context.watch<AppState>().hubFeed;
                           final it = items[index];
-                          return _feedRow(context, it);
+                          return Dismissible(
+                            key: Key('feed_${it.id}'),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              color: Colors.red,
+                              child: const Icon(Icons.visibility_off, color: Colors.white),
+                            ),
+                            onDismissed: (direction) {
+                              context.read<AppState>().handleUserFeedback(it.id, 'hidden');
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Hidden: ${it.title}')),
+                              );
+                            },
+                            child: _feedRow(context, it),
+                          );
                         },
                         childCount: context.watch<AppState>().hubFeed.length,
                       ),
@@ -362,8 +408,9 @@ class HomeScreen extends StatelessWidget {
           );
         },
       ),
-    )); // Added closing parenthesis here
-  }
+    ),
+  );
+}
 
   void _openHubSheet(BuildContext context, String hub) {
     final state = context.read<AppState>();
@@ -627,7 +674,7 @@ class _RecentActivityCard extends StatelessWidget {
     if (t == FeedType.email) return LucideIcons.mail;
     if (t == FeedType.message) return LucideIcons.messageSquare;
     if (t == FeedType.news) return LucideIcons.newspaper;
-    if (t == FeedType.whatsapp) return LucideIcons.messageCircle;
+    if (t == FeedType.message) return LucideIcons.messageCircle;
     return LucideIcons.bell;
   }
 
@@ -635,7 +682,6 @@ class _RecentActivityCard extends StatelessWidget {
     if (t == FeedType.email) return AppGradients.email(context);
     if (t == FeedType.message) return AppGradients.message(context);
     if (t == FeedType.news) return AppGradients.news(context);
-    if (t == FeedType.whatsapp) return AppGradients.whatsapp(context);
     return AppGradients.message(context);
   }
 
@@ -655,14 +701,16 @@ class _RecentActivityCard extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  gradient: grad,
-                  borderRadius: BorderRadius.circular(6),
+              RepaintBoundary(
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    gradient: grad,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 14),
                 ),
-                child: Icon(icon, color: Colors.white, size: 14),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -709,39 +757,83 @@ class _HubCard extends StatelessWidget {
   final IconData icon;
   final List<Color> gradient;
   final VoidCallback? onTap;
-  const _HubCard(this.title, this.icon, this.gradient, {this.onTap});
+  final VoidCallback? onLongPress;
+  const _HubCard(this.title, this.icon, this.gradient, {this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
-    final count = context.watch<AppState>().hubCount(title);
+    // hubCount is not defined in AppState, using unreadCount as placeholder or implementing logic
+    // Assuming we want count of items in this hub
+    final count = context.watch<AppState>().getHubItems(CategoryConfig(
+      id: title.toLowerCase(), // Simple ID derivation
+      name: title,
+      shortName: title,
+      gradient: gradient,
+      bgColor: Colors.black,
+      textColor: Colors.white,
+      borderColor: Colors.white,
+      ringColor: Colors.white
+    )).length;
+    
     final isUrgent = title == 'Urgent & Priority';
     return InkWell(
       borderRadius: BorderRadius.circular(16),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: GlassCard(
-        padding: const EdgeInsets.all(12),
+        color: const Color(0xB31E293B), // Increased opacity (70%) for better readability
+        padding: const EdgeInsets.all(10),
         child: Stack(
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(colors: gradient),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(color: gradient.last.withOpacity(0.25), blurRadius: 10),
-                    ],
+                RepaintBoundary(
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: gradient),
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(color: gradient.last.withOpacity(0.3), blurRadius: 12, spreadRadius: 1),
+                      ],
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 19),
                   ),
-                  child: Icon(icon, color: Colors.white, size: 18),
                 ),
-                const SizedBox(height: 10),
-                Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      height: 1.15,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
-                  children: const [Icon(Icons.arrow_outward_rounded, size: 16, color: Color(0xFF94A3B8))],
+                  children: const [
+                    Icon(
+                      Icons.arrow_outward_rounded,
+                      size: 15,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ],
                 )
               ],
             ),

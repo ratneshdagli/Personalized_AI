@@ -45,15 +45,21 @@ dependencies:
   crypto: ^3.0.3
   tflite_flutter: 0.12.1
   url_launcher: ^6.2.5
-  flutter_web_auth_2: ^4.1.0
+
   convert: ^3.1.1
   flutter_gemma: ^0.11.9  # For local LLM inference
+  image_picker: ^1.0.7  # For picking images from gallery/camera
+  image: ^4.1.7  # For image processing
   path: ^1.8.3
   file_picker: ^10.3.3
+  isar: ^3.1.0
+  isar_flutter_libs: ^3.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  isar_generator: ^3.1.0
+  build_runner: ^2.4.8
 
 dependency_overrides:
 

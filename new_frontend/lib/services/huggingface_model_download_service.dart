@@ -6,9 +6,12 @@ import 'package:convert/convert.dart';  // For AccumulatorSink
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'local_llm_service.dart';
+import '../data/repositories/model_repository.dart';
+import '../data/schema/model_record.dart';
 
 /// A streaming hash sink that computes SHA256 incrementally without buffering all data.
 class HashSink implements Sink<List<int>> {
@@ -68,6 +71,8 @@ class HFModelInfo {
   final int sizeInBytes;
   final String? description;
   final String? version;
+  final bool llmSupportImage;
+  final List<String> taskTypes;
 
   const HFModelInfo({
     required this.id,
@@ -77,6 +82,8 @@ class HFModelInfo {
     required this.sizeInBytes,
     this.description,
     this.version,
+    this.llmSupportImage = false,
+    this.taskTypes = const [],
   });
 
   // Getters for backward compatibility
@@ -86,8 +93,6 @@ class HFModelInfo {
 
   factory HFModelInfo.fromJson(Map<String, dynamic> json) {
     try {
-      debugPrint('Parsing model info from JSON: ${json.toString()}');
-      
       // Extract fields with fallbacks
       final id = (json['id'] ?? '').toString().trim();
       final displayName = (json['displayName'] ?? json['name'] ?? 'Unknown Model').toString();
@@ -102,15 +107,11 @@ class HFModelInfo {
         sizeInBytes = int.tryParse(json['sizeInBytes']) ?? 0;
       }
       
-      debugPrint('''
-      [HFModelInfo] Parsed model:
-        ID: $id
-        Name: $displayName
-        Repo: $hfRepoId
-        File: $fileName
-        Size: $sizeInBytes bytes
-      ''');
-      
+      // Parse taskTypes if available
+      final taskTypes = json['taskTypes'] is List 
+          ? List<String>.from(json['taskTypes'])
+          : <String>[];
+          
       return HFModelInfo(
         id: id,
         displayName: displayName,
@@ -119,6 +120,8 @@ class HFModelInfo {
         sizeInBytes: sizeInBytes,
         description: json['description']?.toString(),
         version: json['version']?.toString(),
+        llmSupportImage: json['llmSupportImage'] == true,
+        taskTypes: taskTypes,
       );
     } catch (e, stackTrace) {
       debugPrint('ERROR in HFModelInfo.fromJson: $e');
@@ -136,6 +139,8 @@ class HFModelInfo {
     'sizeInBytes': sizeInBytes,
     if (description != null) 'description': description,
     if (version != null) 'version': version,
+    'llmSupportImage': llmSupportImage,
+    'taskTypes': taskTypes,
   };
 }
 
@@ -228,6 +233,13 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
     notifyListeners();
   }
   
+  ModelRepository? _modelRepository;
+
+  void init(ModelRepository repo) {
+    _modelRepository = repo;
+    _initializeCache();
+  }
+
   // Backend base URL
   final String _backendBaseUrl = 'http://192.168.29.143:8000';
   
@@ -235,6 +247,7 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
   List<HFModelInfo> _availableModels = [];
   
   // In-memory cache of installed model filenames
+  final Set<String> _installedModelIds = {};
   final Set<String> _installedModelFileNames = {};
   bool _isCacheInitialized = false;
   
@@ -244,25 +257,111 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
   
   // Initialize the cache of installed model filenames
   Future<void> _initializeCache() async {
-    if (_isCacheInitialized) return;
+    if (_modelRepository == null) return;
+    
+    try {
+      final installed = await _modelRepository!.getInstalledModels();
+      _installedModelIds.clear();
+      _installedModelIds.addAll(installed.map((m) => m.modelId));
+      
+      _installedModelFileNames.clear();
+      _installedModelFileNames.addAll(installed.map((m) => path.basename(m.path)));
+      
+      // Scan the models directory for any files not in database
+      await _scanAndRegisterExistingModels();
+      
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error initializing model cache: $e');
+    }
+  }
+
+  /// Scans the models directory and registers any existing model files not in the database
+  Future<void> _scanAndRegisterExistingModels() async {
+    if (_modelRepository == null) return;
     
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final modelsDir = Directory('${appDir.path}/models');
       
-      if (await modelsDir.exists()) {
-        await for (final entity in modelsDir.list()) {
-          if (entity is File) {
-            _installedModelFileNames.add(entity.uri.pathSegments.last);
+      if (!await modelsDir.exists()) {
+        debugPrint('[HFModelDownload] Models directory does not exist yet');
+        return;
+      }
+      
+      debugPrint('[HFModelDownload] Scanning models directory for existing files...');
+      final files = await modelsDir.list().toList();
+      
+      for (final fileEntity in files) {
+        if (fileEntity is! File) continue;
+        
+        final file = fileEntity as File;
+        final fileName = path.basename(file.path);
+        
+        // Skip if already in cache
+        if (_installedModelFileNames.contains(fileName)) {
+          continue;
+        }
+        
+        // Try to match the file to a known model from available models
+        HFModelInfo? matchedModel;
+        for (final model in _availableModels) {
+          if (fileName.contains(model.id.replaceAll('/', '--')) ||
+              fileName.contains(model.fileName) ||
+              fileName == model.fileName) {
+            matchedModel = model;
+            break;
           }
         }
+        
+        // If no match, create a basic model info from the file
+        if (matchedModel == null) {
+          debugPrint('[HFModelDownload] Found unknown model file: $fileName, skipping registration');
+          continue;
+        }
+        
+        final fileStat = await file.stat();
+        final fileSize = fileStat.size;
+        
+        debugPrint('[HFModelDownload] Found existing model: $fileName (${fileSize} bytes)');
+        
+        // Compute SHA256 if file size matches expected size (to avoid re-hashing huge files unnecessarily)
+        String? sha256Hash;
+        if (fileSize == matchedModel.sizeInBytes || matchedModel.sizeInBytes == 0) {
+          debugPrint('[HFModelDownload] Computing SHA256 for: $fileName');
+          sha256Hash = await _computeFileHash(file);
+          debugPrint('[HFModelDownload] SHA256: ${sha256Hash.substring(0, 12)}...');
+        }
+        
+        // Register the model in the database
+        final modelRecord = ModelRecord()
+          ..modelId = matchedModel.id
+          ..name = matchedModel.displayName
+          ..path = file.path
+          ..sizeBytes = fileSize
+          ..version = matchedModel.version
+          ..runtime = 'gemma' // Default to gemma for TFLite models
+          ..checksum = sha256Hash
+          ..isInstalled = true
+          ..downloadedAt = fileStat.changed;
+        
+        await _modelRepository!.addOrUpdateModel(modelRecord);
+        
+        // Add to cache
+        _installedModelIds.add(matchedModel.id);
+        _installedModelFileNames.add(fileName);
+        
+        debugPrint('[HFModelDownload] Registered existing model: ${matchedModel.displayName}');
       }
-      _isCacheInitialized = true;
-      debugPrint('[HFModelDownload] Initialized model file cache with ${_installedModelFileNames.length} files');
-    } catch (e) {
-      debugPrint('[HFModelDownload] Error initializing model file cache: $e');
+      
+      debugPrint('[HFModelDownload] Model scanning complete. Total installed: ${_installedModelIds.length}');
+    } catch (e, stackTrace) {
+      debugPrint('[HFModelDownload] Error scanning for existing models: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
   }
+
+
   
   // Add a file to the cache
   void _addToCache(String fileName) {
@@ -272,6 +371,11 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
   // Remove a file from the cache
   void _removeFromCache(String fileName) {
     _installedModelFileNames.remove(fileName);
+  }
+  
+  // Clear the model download cache for a specific model
+  void _clearModelDownloadCache(String modelId) {
+    _modelDownloadCache.remove(modelId);
   }
 
   // Check if a model with the given ID is downloaded
@@ -456,6 +560,27 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
       await prefs.setString(_prefsKeyInstalledModelPath, foundPath!);
       await prefs.setInt(_prefsKeyInstalledAt, DateTime.now().millisecondsSinceEpoch);
       
+      // Update ModelRepository
+      if (_modelRepository != null) {
+        try {
+          final record = ModelRecord()
+            ..modelId = model.id
+            ..name = model.displayName
+            ..version = model.version
+            ..runtime = 'gemma' // Defaulting to gemma for now
+            ..sizeBytes = fileSize
+            ..path = foundPath
+            ..downloadedAt = DateTime.now()
+            ..isInstalled = true;
+
+          await _modelRepository!.addOrUpdateModel(record);
+          _installedModelIds.add(model.id);
+          _installedModelFileNames.add(path.basename(foundPath));
+        } catch (e) {
+          debugPrint('[HFModelDownload] Error updating model repository: $e');
+        }
+      }
+
       debugPrint('[HFModelDownload] Model installation started: ${model.id}');
       
       // Initialize the model in the background
@@ -534,6 +659,8 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
 
   /// Check for installed model
   Future<void> checkInstalledModel({bool force = false}) async {
+    if (_modelRepository == null) return;
+
     // If we've already checked recently and not forcing a refresh, return cached result
     if (!force && _lastModelCheck != null && 
         DateTime.now().difference(_lastModelCheck!) < const Duration(minutes: 5)) {
@@ -543,76 +670,37 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
     _lastModelCheck = DateTime.now();
     
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final modelId = prefs.getString(_prefsKeyInstalledModelId);
+      final installedModels = await _modelRepository!.getInstalledModels();
       
-      // If no model ID is stored, ensure we're in a clean state
-      if (modelId == null || modelId.isEmpty) {
-        // Clear any partial or invalid state
-        await prefs.remove(_prefsKeyInstalledModelId);
-        await prefs.remove(_prefsKeyInstalledModelFile);
-        await prefs.remove(_prefsKeyInstalledModelPath);
-        await prefs.remove(_prefsKeyInstalledModelSha);
-        await prefs.remove(_prefsKeyInstalledAt);
-        
+      if (installedModels.isEmpty) {
         _updateState(const HFModelDownloadState(status: HFModelDownloadStatus.notInstalled));
         return;
       }
-      
-      final modelPath = prefs.getString(_prefsKeyInstalledModelPath);
-      
-      // Verify the model file exists and is valid
-      if (modelPath == null || modelPath.isEmpty) {
-        await _clearModelState(prefs);
-        return;
-      }
-      
-      final modelFile = File(modelPath);
-      if (!await modelFile.exists()) {
-        debugPrint('[HFModelDownload] Model file not found at path: $modelPath');
-        await _clearModelState(prefs);
-        return;
-      }
-      
-      // Verify the model is in our available models
-      HFModelInfo? foundModel;
-      try {
-        foundModel = _availableModels.firstWhere(
-          (m) => m.id == modelId || m.hfRepoId == modelId,
-        );
-      } catch (e) {
-        debugPrint('[HFModelDownload] Model $modelId not found in available models: $e');
-        await _clearModelState(prefs);
-        return;
-      }
-      
-      if (foundModel == null) {
-        debugPrint('[HFModelDownload] No model found with ID: $modelId');
-        await _clearModelState(prefs);
-        return;
-      }
-      
-      // Add to cache if not already present
-      final fileName = modelPath.split('/').last;
-      _addToCache(fileName);
+
+      // For now, just pick the first one or the most recently downloaded
+      // TODO: Add logic to select "active" model
+      final activeModel = installedModels.last;
       
       _updateState(HFModelDownloadState(
         status: HFModelDownloadStatus.installed,
-        modelInfo: foundModel,
-        modelPath: modelPath,
-        sha256: prefs.getString(_prefsKeyInstalledModelSha),
-        installedAt: DateTime.fromMillisecondsSinceEpoch(
-          prefs.getInt(_prefsKeyInstalledAt) ?? DateTime.now().millisecondsSinceEpoch,
+        progress: 1.0,
+        bytesDownloaded: activeModel.sizeBytes,
+        totalBytes: activeModel.sizeBytes,
+        modelPath: activeModel.path,
+        modelInfo: HFModelInfo(
+          id: activeModel.modelId,
+          displayName: activeModel.name,
+          hfRepoId: activeModel.modelId, // Assuming ID is repo ID for now
+          fileName: path.basename(activeModel.path),
+          sizeInBytes: activeModel.sizeBytes,
+          version: activeModel.version,
         ),
+        installedAt: activeModel.downloadedAt,
       ));
       
-      debugPrint('[HFModelDownload] Found installed model: ${foundModel.id} at $modelPath');
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('[HFModelDownload] Error checking installed model: $e');
-      debugPrint('Stack trace: $stackTrace');
-      // On any error, ensure we don't show an invalid model as installed
-      final prefs = await SharedPreferences.getInstance();
-      await _clearModelState(prefs);
+      _updateState(const HFModelDownloadState(status: HFModelDownloadStatus.notInstalled));
     }
   }
 
@@ -797,6 +885,15 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
 
       await _saveModelMetadata(modelInfo, filePath, computedHash);
 
+      // Clear the download cache so the model shows as installed
+      _modelDownloadCache.clear();
+      _addToCache(fileName);
+      
+      // Force refresh of installed models list
+      if (_modelRepository != null) {
+        await checkInstalledModel(force: true);
+      }
+
       final now = DateTime.now();
       _updateState(HFModelDownloadState(
         status: HFModelDownloadStatus.installed,
@@ -809,7 +906,7 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
         installedAt: now,
       ));
 
-      debugPrint('[HFModelDownload] Model installed successfully: $filePath');
+      debugPrint('[HFModelDownload] Model installed successfully:$filePath');
     } catch (e, stackTrace) {
       debugPrint('[HFModelDownload] Download failed: $e');
       debugPrint('[HFModelDownload] Stack trace: $stackTrace');
@@ -886,20 +983,73 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
     try {
       _updateState(_state.copyWith(status: HFModelDownloadStatus.preparing));
       
-      // Get the model file
-      final modelPath = _state.modelPath;
-      if (modelPath == null) {
-        throw Exception('No model path found');
+      // Get the model info
+      final modelInfo = _state.modelInfo;
+      if (modelInfo == null) {
+        throw Exception('No model info found');
       }
       
-      final modelFile = File(modelPath);
-      if (await modelFile.exists()) {
-        // Remove from cache before deleting
-        final fileName = modelPath.split('/').last;
-        _removeFromCache(fileName);
+      // Delete all possible model files
+      final appDir = await getApplicationDocumentsDirectory();
+      final modelsDir = Directory('${appDir.path}/models');
+      
+      if (await modelsDir.exists()) {
+        final fileName = modelInfo.fileName;
+        final safeRepoId = modelInfo.hfRepoId.replaceAll('/', '--');
+        final safeId = modelInfo.id.replaceAll('/', '--');
+        final modelName = modelInfo.id.split('/').last;
         
-        await modelFile.delete();
-        debugPrint('[HFModelDownload] Deleted model file: $modelPath');
+        final possibleFilenames = [
+          // Format used in the logs: {hfRepoId}--{modelName}--{fileName}
+          '$safeRepoId--$modelName--$fileName',
+          // Current format: {hfRepoId}--{fileName}
+          '$safeRepoId--$fileName',
+          // Format used in some downloads: {id}--{fileName}
+          '$safeId--$fileName',
+          // Original format: just the filename
+          fileName,
+          // Another possible format: {id}--{fileName}
+          '${modelInfo.id}--$fileName',
+        ];
+        
+        debugPrint('[HFModelDownload] Looking for model files to delete with patterns: ${possibleFilenames.join(', ')}');
+        
+        // Check and delete each possible file
+        for (final name in possibleFilenames) {
+          final path = '${modelsDir.path}/$name';
+          final file = File(path);
+          if (await file.exists()) {
+            await file.delete();
+            debugPrint('[HFModelDownload] Deleted model file: $path');
+            // Remove from cache
+            _removeFromCache(name);
+          }
+        }
+        
+        // Also try to find and delete any files that contain the model name
+        final files = await modelsDir.list().where((entity) => entity is File).toList();
+        for (final file in files) {
+          if (file is File && 
+              (file.path.contains(modelName) || 
+               file.path.contains(safeRepoId) || 
+               file.path.contains(safeId))) {
+            await file.delete();
+            debugPrint('[HFModelDownload] Deleted additional model file: ${file.path}');
+            // Remove from cache
+            final fileName = file.path.split('/').last;
+            _removeFromCache(fileName);
+          }
+        }
+      }
+      
+      // Clear the model from LocalLLMService
+      try {
+        final localLLMService = LocalLLMService();
+        await localLLMService.clearModel();
+        debugPrint('[HFModelDownload] Cleared model from LocalLLMService');
+      } catch (e) {
+        debugPrint('[HFModelDownload] Error clearing model from LocalLLMService: $e');
+        // Don't fail the removal, just log the error
       }
       
       // Clear shared preferences
@@ -923,6 +1073,8 @@ class HuggingFaceModelDownloadService with ChangeNotifier {
       rethrow;
     }
   }
+
+
 
   // Clear all model-related state
   Future<void> _clearModelState(SharedPreferences prefs) async {

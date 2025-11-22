@@ -16,15 +16,13 @@ class CalendarEventSheet extends StatefulWidget {
 
 const Map<EventSource, IconData> _sourceIcons = {
   EventSource.email: Icons.mail_outline,
-  EventSource.whatsapp: Icons.chat_bubble_outline,
-  EventSource.messages: Icons.message_outlined,
+  EventSource.messages: Icons.chat_bubble_outline,
   EventSource.phone: Icons.phone_outlined,
   EventSource.manual: Icons.edit_outlined,
 };
 
 const Map<EventSource, String> _sourceLabels = {
   EventSource.email: 'Email',
-  EventSource.whatsapp: 'WhatsApp',
   EventSource.messages: 'Messages',
   EventSource.phone: 'Phone',
   EventSource.manual: 'Manual',

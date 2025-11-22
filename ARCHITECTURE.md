@@ -1,103 +1,77 @@
-### Technical Architecture and Data Flow Guide for Personalized AI Companion
+### Technical Architecture and Data Flow Guide for Personalized AI Companion (Offline-First)
 
 ## Part 1: High-Level System Architecture
 
 ### Component Diagram (Mermaid)
 ```mermaid
 flowchart LR
-    subgraph Mobile
-        A[Flutter Mobile App (UI)]
-        B[Android Native Layer (Services)]
-        A <--> |MethodChannel & EventChannel| B
+    subgraph Mobile [Flutter Mobile App]
+        UI[UI Layer]
+        Services[Local Services]
+        DB[(Isar Database)]
+        LLM[Local LLM (MediaPipe)]
+        
+        UI --> Services
+        Services <--> DB
+        Services <--> LLM
     end
 
-    subgraph Backend
-        C[Python Backend (FastAPI)]
-        D[(SQLite Database)]
-        C <--> |SQLAlchemy| D
+    subgraph Native [Android Native Layer]
+        Notif[NotificationListenerService]
+        Notif --> |MethodChannel| Services
     end
 
-    E[[Future LLM/ML Services]]
-
-    B --> |HTTP POST /api/whatsapp/add & /api/ingest/context_event| C
-    A --> |HTTP GET /api/feed & health| C
-    C --> |ranking/summarization, embeddings| E
+    subgraph Backend [Minimal Model Server]
+        ModelServer[Python FastAPI]
+        ModelServer --> |Download| LLM
+    end
 ```
 
 ### Core Concept
-- The project captures on-device context (starting with WhatsApp notifications), filters and forwards relevant events to a backend, stores them as unified feed items, optionally processes them with LLM/ML, and displays a personalized, searchable feed in the Flutter app.
+- **Offline-First**: The application operates primarily offline. All user data (feed, tasks, events) is stored locally in an **Isar database**.
+- **Local Intelligence**: LLM inference happens on-device using **MediaPipe** and **Gemma** models.
+- **Privacy**: Notifications are intercepted by the Android native layer and processed locally. No personal data is sent to the cloud.
+- **Minimal Backend**: The Python backend serves ONLY as a model repository for downloading LLM artifacts.
 
-- Live mobile UX:
-  - Android services listen for notifications and optionally accessibility events, sanitize and deduplicate content, broadcast events to Flutter for live UI updates, and optionally forward to the backend over HTTP.
-  - Flutter fetches stored feed items from the backend and renders them with filtering, sorting, and rich UI.
+## Part 2: End-to-End Data Flow: The Journey of a Notification
 
+1) **Capture**
+- A notification (e.g., WhatsApp, Calendar) appears on the device.
+- `NotificationService.kt` (Android) intercepts it via `NotificationListenerService`.
 
-## Part 2: End-to-End Data Flow: The Journey of a WhatsApp Notification
+2) **Forwarding to Flutter**
+- The native service extracts title, text, and package name.
+- It broadcasts the data to Flutter via `MethodChannel` (`com.personalized_ai/notifications`).
 
-1) Capture
-- A WhatsApp notification appears on the device.
+3) **Ingestion & Processing**
+- `NotificationDispatcher` (Flutter) receives the raw data.
+- `FeedService` creates a `FeedItem` and saves it to Isar.
+- `TaskExtractor` sends the text to `LocalLLMService`.
 
-2) Listening
-- `NotificationCaptureService` listens via `NotificationListenerService`.
-```1:9:flutter_application_1/android/app/src/main/kotlin/com/yourorg/personalizedai/NotificationCaptureService.kt
-package com.yourorg.personalizedai
-...
-class NotificationCaptureService : NotificationListenerService() {
-```
+4) **Local Intelligence**
+- `LocalLLMService` runs the prompt through the on-device LLM.
+- The LLM returns a JSON structure extracting tasks, events, and importance.
+- `TaskExtractor` parses the JSON.
 
-3) Filtering & Extraction
-- `onNotificationPosted` extracts `title`, `text`, dedupes, checks `pkg == "com.whatsapp"`, and filters out system messages using `isActualWhatsAppMessage`.
-```52:66:flutter_application_1/android/app/src/main/kotlin/com/yourorg/personalizedai/NotificationCaptureService.kt
-override fun onNotificationPosted(sbn: StatusBarNotification?) {
-    ...
-    val pkg = sbn.packageName ?: return
-    ...
-    val title = extras?.getCharSequence("android.title")?.toString() ?: ""
-    var text = extras?.getCharSequence("android.text")?.toString() ?: ""
-```
-```98:106:flutter_application_1/android/app/src/main/kotlin/com/yourorg/personalizedai/NotificationCaptureService.kt
-if (pkg == "com.whatsapp" && text.isNotEmpty()) {
-    ...
-    if (isActualWhatsAppMessage(title, text)) {
-        handleWhatsAppNotification(title, text, timestamp)
-```
-```151:210:flutter_application_1/android/app/src/main/kotlin/com/yourorg/personalizedai/NotificationCaptureService.kt
-private fun isActualWhatsAppMessage(title: String, text: String): Boolean {
-    // Filters "new messages", short/empty, punctuation-only, etc.
-    ...
-    return true
-}
-```
+5) **Storage & UI Update**
+- `TaskRepository` and `CalendarEventRepository` save the extracted items to Isar.
+- The UI (listening to Isar streams) automatically updates to show the new feed item, tasks, and calendar events.
 
-4) Forwarding
-- A JSON payload is built and sent via `OkHttpClient` in `handleWhatsAppNotification`.
-```241:279:flutter_application_1/android/app/src/main/kotlin/com/yourorg/personalizedai/NotificationCaptureService.kt
-private fun handleWhatsAppNotification(title: String, text: String, timestamp: Long) {
-    ...
-    val whatsappData = JSONObject().apply {
-        put("sender", sender)
-        put("message", text)
-        put("timestamp", timestamp)
-        put("user_id", userId)
-    }
-    ...
-    val url = if (backendUrl.endsWith("/")) backendUrl + "api/whatsapp/add" else backendUrl + "/api/whatsapp/add"
-```
+## Part 3: Data Storage (Isar)
 
-- Independently, all notifications (not just WhatsApp) are broadcast to Flutter for real-time UI via `sendLocalBroadcast`, consumed by `MainActivity` and surfaced over `EventChannel`.
-```142:149:flutter_application_1/android/app/src/main/kotlin/com/yourorg/personalizedai/NotificationCaptureService.kt
-private fun sendLocalBroadcast(context: Context, event: JSONObject) {
-    val intent = Intent(ACTION_CONTEXT_EVENT)
-    intent.putExtra(EXTRA_EVENT_JSON, event.toString())
-    context.sendBroadcast(intent)
-}
-```
-```38:55:flutter_application_1/android/app/src/main/kotlin/com/example/flutter_application_1/MainActivity.kt
-EventChannel(...).setStreamHandler(object : EventChannel.StreamHandler { ... })
-```
+The application uses **Isar**, a high-performance NoSQL database for Flutter.
 
-5) Ingestion
-- The FastAPI backend receives POST `/api/whatsapp/add` in `routes/whatsapp.py`.
+### Schemas
+- **FeedItem**: Represents a raw notification or activity.
+- **Task**: An actionable item extracted from a FeedItem.
+- **CalendarEvent**: A scheduled event extracted from a FeedItem.
+- **ModelRecord**: Metadata about installed LLM models.
+
+## Part 4: Model Management
+
+- **Model Server**: A minimal FastAPI server hosts model files.
+- **Download**: `HuggingFaceModelDownloadService` fetches models from the server.
+- **Inference**: `LocalLLMService` uses the downloaded model for inference.
 ```114:122:flutter_backend/routes/whatsapp.py
 @router.post("/whatsapp/add")
 async def add_whatsapp_message(..., message_data: WhatsAppMessageData):

@@ -24,3 +24,17 @@ plugins {
 }
 
 include(":app")
+
+// Workaround for isar_flutter_libs namespace issue
+// This runs before project evaluation, so it's safe
+gradle.projectsLoaded {
+    rootProject.subprojects {
+        plugins.withId("com.android.library") {
+            extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
+                if (namespace == null) {
+                    namespace = "com.isar.isar_flutter_libs"
+                }
+            }
+        }
+    }
+}
