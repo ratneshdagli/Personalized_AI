@@ -21,7 +21,7 @@ flutter_backend/instance/
 flutter_backend/__pypackages__/
 flutter_backend/*.sqlite
 flutter_backend/*.log
-flutter_backend/routes/model/
+flutter_backend/routes/models.py
 # VSCode / IDE
 .vscode/
 *.swp
