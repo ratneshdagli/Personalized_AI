@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # --- Environment Variable (CRITICAL) ---
 # Load the Hugging Face token from environment
-HF_TOKEN = ""
+HF_TOKEN = "" 
 if not HF_TOKEN:
     logger.warning("HUGGINGFACEHUB_API_TOKEN environment variable not set. Downloads may fail.")
 
